@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Layer by Layer · Reading Room</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f4ed;color:#233e36;font:16px/1.5 system-ui,sans-serif}header,footer,.controls,.phasebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}header{padding:16px 4vw;border-bottom:1px solid #c6cbbf;justify-content:space-between}header strong{font:700 23px Georgia}header strong span{color:#bc532c;margin-right:9px}button{cursor:pointer;color:inherit;background:#fbfaf4;border:1px solid #a8b4a9;border-radius:5px;padding:9px 13px;font:inherit}button:hover,button[aria-pressed=true]{background:#dfe7d8}button:focus-visible,canvas:focus-visible{outline:3px solid #b44e27;outline-offset:3px}main{max-width:1440px;margin:auto;padding:26px 4vw}small,.label{font:600 12px/1.5 ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}.label{color:#52695b}h1,h2{font-family:Georgia,'Times New Roman',serif;letter-spacing:-.04em;font-weight:500}h1{font-size:clamp(36px,4.5vw,68px);margin:3px 0 17px;line-height:1.1}h2{font-size:32px;line-height:1.12;margin:12px 0}section.layout{display:grid;grid-template-columns:minmax(0,2.35fr) minmax(260px,1fr);border:1px solid #b7beb0;border-radius:10px;overflow:hidden}.viewer{position:relative;background-color:#e9eddf;background-image:linear-gradient(#6c866515 1px,transparent 1px),linear-gradient(90deg,#6c866515 1px,transparent 1px);background-size:26px 26px;display:flex;flex-direction:column}.plate{padding:14px 18px;color:#496052;display:flex;justify-content:space-between}.controls{padding:10px 14px;justify-content:center}.controls button{font-size:14px}.controls span{font-size:12px}canvas{display:block;width:100%;height:clamp(300px,43vh,550px);touch-action:none;cursor:grab;margin:auto}aside{padding:clamp(18px,2.6vw,38px);background:#fcfbf5;border-left:1px solid #b7beb0}aside p{min-height:3em}#actions{display:grid;gap:8px}#actions button:first-child{background:#264d40;color:white}.phasebar{align-items:stretch;gap:0;margin-top:12px}.phasebar button{flex:1;text-align:left;border-radius:0;border-right:0;font-size:14px}.phasebar button:last-child{border-right:1px solid #a8b4a9}.phasebar b{display:block;color:#866047;font:12px ui-monospace,monospace;margin-bottom:4px}.phasebar [aria-pressed=true]{box-shadow:inset 0 -3px #325a45}footer{justify-content:space-between;margin-top:20px}.note{border-top:1px solid #cdd3c6;padding-top:14px;color:#54665b;font-size:14px}@media(max-width:760px){section.layout{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid #b7beb0}.phasebar{display:grid;grid-template-columns:repeat(3,1fr)}canvas{height:310px}main{padding:18px 3vw}aside p{min-height:0}.controls{gap:6px}}
+</style>
+<header><strong><span aria-hidden="true">▱</span>Layer by Layer</strong><div><a href="../../" style="color:inherit;margin-right:1em" id="hub">Construction Projects</a><button id="lang">繁</button></div></header>
+<main><small class="label" id="project"></small><h1 id="heading"></h1><section class="layout"><div class="viewer"><div class="plate"><small id="view"></small><small>LBL / 01</small></div><canvas tabindex="0" id="model"></canvas><div class="controls"><span id="hint"></span><button id="left">↶</button><button id="right">↷</button><button id="tilt">◇</button></div></div>
+<aside><small class="label" id="tag"></small><div aria-live="polite" aria-atomic="true"><h2 id="lesson"></h2><p id="detail"></p></div><div id="actions"></div><p class="note" id="note"></p></aside></section>
+<footer><small id="timeline"></small><small id="phasecount"></small></footer><nav class="phasebar" id="phases"></nav></main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let zh=false,phase=5,open=false,part='',result='',angle=.64,elevation=.49,drag=null;
+const tr=(a,b)=>zh?b:a;
+const phases=[['Site','基地','Keep a delivery route clear','保留運送動線','The gravel strip is the delivery lane. The corner stakes mark the room footprint. Both need space before the first pour.','碎石帶是運送通道，角落的木樁標出房間範圍。澆置混凝土之前，兩者都需要預留空間。'],['Foundations','基礎','Look beneath each column','看看柱子下方','Each footing spreads a column’s load into the soil. Advance one phase and compare the column positions with the pads.','獨立基腳將柱子的荷重分散到土壤中。前進一個階段，對照柱子與基腳的位置。'],['Frame','結構','Follow the load to the ground','追蹤荷重傳遞路徑','The beams span between columns. Follow a beam to a column, then rewind to see the footing beneath it.','梁跨在柱與柱之間。沿著梁找到柱子，再回到上一階段看看下方的基腳。'],['Envelope','外殼','Find the edge of the room','找出室內外的分界','The glazed wall brings daylight into the reading room. Its frames divide the opening into smaller panes.','玻璃外牆將日光引入閱覽室，窗框將大面開口分隔成數塊窗格。'],['Services','機電','Trace the supply duct','追蹤送風管','The blue duct carries supply air above the ceiling. Follow it toward the square outlet. The reading-room puzzle lets you finish this run.','藍色風管在天花板上方輸送空氣。沿著它找到方形出風口，進入閱覽室謎題完成這段管路。'],['Finishes','裝修']];
+const names={straight:['Straight duct','直管'],elbow:['Elbow fitting','彎管']};
+function act(a,b,fn){let el=document.createElement('button');el.textContent=tr(a,b);el.onclick=fn;$('actions').append(el)}
+function render(){
+ $('hub').textContent=tr('← Construction Projects','← 建案大師');document.documentElement.lang=zh?'zh-Hant':'en';$('lang').textContent=zh?'En':'繁';$('lang').ariaLabel=zh?'Switch to English':'切換至繁體中文';
+ $('project').textContent=tr('Neighborhood library · Construction study','社區圖書館 · 施工探索');$('heading').textContent=tr('The reading room','圖書館閱覽室');$('view').textContent=tr('Section model','剖面模型');$('hint').textContent=tr('Drag to orbit','拖曳旋轉');$('tilt').textContent=tr('Tilt view','切換俯角');$('left').ariaLabel=tr('Orbit left','向左旋轉');$('right').ariaLabel=tr('Orbit right','向右旋轉');$('model').ariaLabel=tr('3D reading room. Use arrow keys to rotate and tilt.','閱覽室立體模型，可用方向鍵旋轉與調整俯角。');$('timeline').textContent=tr('Construction timeline','施工時間軸');$('phasecount').textContent='0'+(phase+1)+' / 06';
+ $('actions').replaceChildren();$('phases').replaceChildren();
+ phases.forEach((p,i)=>{let b=document.createElement('button');b.innerHTML='<b>0'+(i+1)+'</b>'+tr(p[0],p[1]);b.setAttribute('aria-pressed',i===phase);b.onclick=()=>{phase=i;render()};$('phases').append(b)});
+ let title,desc;
+ if(phase<5){const p=phases[phase];title=tr(p[2],p[3]);desc=tr(p[4],p[5]);act('Next phase →','下一階段 →',()=>{phase++;render()});act('Return to puzzle','回到謎題',()=>{phase=5;render()})}
+ else{
+ title=result==='pass'?tr('The mobile stirs','吊飾轉動了'):open?tr('Bridge the gap','接上缺口'):tr('Why is the mobile still?','為什麼吊飾不動？');
+ desc=result==='pass'?tr('Air reaches the outlet. Below it, the paper mobile turns. Your connection is working.','空氣抵達出風口，下方的紙吊飾開始轉動。你接通了風管。'):result==='fail'?tr('The fan runs, but the mobile hangs still. Inspect the route between the supply duct and the outlet.','風扇正在運轉，吊飾卻靜止不動。檢查送風管與出風口之間的路徑。'):open?(part?tr('Your fitting is in place. Close the ceiling and test the air at the outlet.','管件已就位。蓋上天花板，測試出風口。'):tr('Two duct ends face each other above the shelves. Which fitting will join them?','書架上方的兩個風管端口彼此相對。哪種管件能接通它們？')):tr('The children’s corner is ready to open. Switch on the ventilation and watch the paper mobile by the shelves.','兒童閱讀角即將開放。開啟通風設備，看看書架旁的紙吊飾。');
+ if(result==='pass'){act('Rewind to the site','回看基地',()=>{phase=0;render()});act('Replay puzzle','重新挑戰',()=>{open=false;part='';result='';render()})}
+ else if(open){for(const [key,p] of Object.entries(names)){act(...p,()=>{part=key;result='';render()});$('actions').lastChild.setAttribute('aria-pressed',part===key)}act('Close ceiling','蓋上天花板',()=>{open=false;result='';render()})}
+ else{act(result==='fail'?'Peel ceiling':'Test airflow',result==='fail'?'掀開天花板':'測試氣流',()=>{if(result==='fail'){open=true;result=''}else result=part==='straight'?'pass':'fail';render()});if(!result)act('Peel ceiling','掀開天花板',()=>{open=true;render()})}
+ }
+ $('tag').textContent=phase===5?tr('Field exercise / Ventilation','實作任務 / 通風'):tr('Field notes / ','施工筆記 / ')+tr(...phases[phase].slice(0,2));$('lesson').textContent=title;$('detail').textContent=desc;$('note').textContent=tr('Explore the six phases below. Return to Finishes to continue your puzzle.','點選下方六個階段探索施工過程。回到「裝修」即可繼續挑戰。');draw(0)
+}
+const canvas=$('model'),ctx=canvas.getContext('2d'),motion=matchMedia('(prefers-reduced-motion: reduce)');
+const wood='#c48e5d',concrete='#abb2a4',teal='#438d88',ink='#324b43';
+function draw(time){
+ const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;
+ const dpr=Math.min(devicePixelRatio||1,2);
+ if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}
+ ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+ const scale=Math.min(w/15,h/11.5),c=Math.cos(angle),s=Math.sin(angle),ce=Math.cos(elevation),se=Math.sin(elevation),faces=[];
+ function project([x,y,z]){const dep=x*s+z*c;return [w/2+(x*c-z*s)*scale,h*.62+(dep*se-(y-1.3)*ce)*scale,dep*ce+y*se]}
+ function face(vertices,color,dark=0){const points=vertices.map(project);faces.push({points,color,dark,depth:points.reduce((n,p)=>n+p[2],0)/points.length})}
+ function box(x,y,z,dx,dy,dz,color){
+ const a=x-dx/2,b=x+dx/2,l=z-dz/2,r=z+dz/2,t=y+dy;
+ face([[a,t,l],[b,t,l],[b,t,r],[a,t,r]],color);
+ const X=s>=0?b:a,Z=c>=0?r:l;
+ face([[X,y,l],[X,y,r],[X,t,r],[X,t,l]],color,.17);
+ face([[a,y,Z],[b,y,Z],[b,t,Z],[a,t,Z]],color,.09)
+ }
+ // A cutaway diorama. All coordinates are in the same model space.
+ box(0,-.75,0,9.7,.48,7.8,'#a89777');box(0,-.27,0,9.7,.12,7.8,'#abb78a');
+ if(phase===0){
+ box(0,-.15,2.98,9.5,.06,1.2,'#c9c7af');
+ for(const x of [-3.7,3.7])for(const z of [-2.45,2.45])box(x,-.15,z,.14,.7,.14,wood);
+ for(const z of [-2.45,2.45])box(0,.26,z,7.4,.025,.025,'#fff1aa');
+ for(const x of [-3.7,3.7])box(x,.26,0,.025,.025,4.9,'#fff1aa')
+ }
+ if(phase>=1)for(const x of [-3.7,0,3.7])for(const z of [-2.45,2.45]){box(x,-.18,z,1.22,.35,1.18,concrete);box(x,.17,z,.62,.3,.62,'#b8bbae')}
+ if(phase>=2){
+ box(0,.25,0,8,.28,5.5,concrete);
+ for(const x of [-3.7,0,3.7])for(const z of [-2.45,2.45])box(x,.53,z,.24,3.42,.24,'#cbcbb9');
+ for(const z of [-2.45,2.45])box(0,3.78,z,7.7,.32,.27,concrete);
+ for(const x of [-3.7,0,3.7])box(x,3.78,0,.27,.32,4.95,concrete)
+ }
+ if(phase>=3){
+ box(0,.54,-2.44,7.48,.82,.15,'#d6c8a7');
+ for(let i=0;i<6;i++){let x=-3.07+i*1.23;box(x,1.37,-2.48,1.18,2.35,.075,'#b7d7ca');box(x-.61,1.37,-2.4,.09,2.36,.12,ink);box(x,2.65,-2.4,1.2,.07,.12,ink)}
+ box(-3.74,.54,0,.15,2.65,4.9,'#e4d9bb')
+ }
+ if(phase>=4){
+ box(-1.45,3.62,.85,4.48,.32,.42,teal);box(2.25,3.62,.85,.64,.32,.42,teal);box(2.48,3.38,.85,.53,.25,.54,'#415f60');
+ if(part){box(part==='straight'?1.36:1.06,3.62,.85,part==='straight'?1.15:.54,.32,.42,'#db964e');if(part==='elbow')box(1.13,3.62,1.2,.4,.32,.56,'#db964e')}
+ for(let i=0;i<8;i++)box(-3.45+i*.55,3.61,.85,.055,.345,.45,'#90b6a9');
+ for(const z of [-.8,-1.03])box(0,3.65,z,7.25,.09,.095,'#b2714a')
+ }
+ if(phase===5){
+ for(let i=0;i<14;i++)box(-3.65+i*.565,.54,0,.55,.045,5.38,i%3?'#d4b083':'#dfbf96');
+ // Two bookcases, each stocked with individually coloured spines.
+ const colors=['#a84835','#567c73','#e3b569','#667d8a','#8b7855'];
+ for(const x of [-2.48,.12]){for(const off of [-1.04,1.04])box(x+off,.59,-1.88,.09,1.64,.52,wood);
+ for(let j=0;j<3;j++){let y=.61+j*.6;box(x,y,-1.87,2.15,.07,.56,wood);for(let k=0;k<9;k++)box(x-.86+k*.19,y+.07,-1.84,.14,.31+((k+j)%3)*.065,.32,colors[(k+2*j)%5])}}
+ for(const x of [-1.8,-.15])for(const z of [.25,1.2])box(x,.59,z,.12,.69,.12,wood);
+ box(-.98,1.27,.72,2.05,.12,1.34,'#cc9966');box(-1.3,1.4,.7,.53,.05,.38,teal);
+ for(const z of [-.25,1.72]){box(-.9,.59,z,.35,.4,.35,wood);box(-.9,.99,z,.6,.12,.52,'#c76046')}
+ const sway=result==='pass'?(motion.matches?.35:Math.sin(time/620)*.48):0;
+ box(2.48,2.32,.85,.035,1.06,.035,ink);box(2.48,2.32,.85,1.05,.04,.04,wood);
+ for(const [i,col] of ['#c66146','#d7a749','#5b9180'].entries()){const x=2.03+i*.45,y=1.87+(i%2)*.15,z=.85+Math.sin(i+1)*sway;
+ box(x,y,z,.025,2.32-y,.025,ink);face([[x-.2,y,z],[x+.23,y+.06,z+.04],[x+.03,y-.25,z+.17]],col)}
+ // A removable ceiling bay and a permanent rear strip leave the interior visible.
+ for(let i=0;i<6;i++)box(-3.1+i*1.24,4.12,-1.84,1.21,.095,1.15,'#e8e2ca');
+ if(!open){for(let i=0;i<3;i++)box(.15+i*1.1,4.12,.85,1.07,.095,1.18,'#e8e2ca')}
+ }
+ faces.sort((a,b)=>a.depth-b.depth);
+ for(const f of faces){ctx.beginPath();f.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fillStyle=f.color;ctx.fill();if(f.dark){ctx.fillStyle='rgba(33,45,38,'+f.dark+')';ctx.fill()}ctx.strokeStyle='rgba(50,59,45,.2)';ctx.lineWidth=.65;ctx.stroke()}
+}
+function orbit(delta){angle+=delta;draw(0)}
+function tilt(delta){elevation=Math.max(.2,Math.min(.96,elevation+delta));draw(0)}
+$('left').onclick=()=>orbit(-.24);$('right').onclick=()=>orbit(.24);$('tilt').onclick=()=>{elevation=elevation>.65?.4:.85;draw(0)};
+$('lang').onclick=()=>{zh=!zh;render()};
+canvas.onpointerdown=e=>{canvas.setPointerCapture(e.pointerId);drag=[e.clientX,e.clientY]};
+canvas.onpointermove=e=>{if(!drag)return;angle+=(e.clientX-drag[0])*.009;tilt((e.clientY-drag[1])*.005);drag=[e.clientX,e.clientY]};
+canvas.onlostpointercapture=()=>drag=null;
+canvas.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();if(e.key==='ArrowLeft'||e.key==='ArrowRight')orbit(e.key==='ArrowLeft'?-.18:.18);else tilt(e.key==='ArrowUp'?.1:-.1)};
+new ResizeObserver(()=>draw(0)).observe(canvas);
+function animate(time){if(phase===5&&result==='pass'&&!motion.matches&&!document.hidden)draw(time);requestAnimationFrame(animate)}
+render();requestAnimationFrame(animate);
+</script></html>
