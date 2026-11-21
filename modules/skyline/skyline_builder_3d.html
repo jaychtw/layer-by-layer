@@ -1,0 +1,2410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Skyline Builder 3D — 摩天大樓建造實驗室</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: grab;
+    }
+    #canvas-container:active {
+      cursor: grabbing;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.84);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+    .glass-light {
+      background: rgba(30, 41, 59, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .phase-pill {
+      transition: all 0.2s ease;
+    }
+    .phase-pill.active {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 700;
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.55);
+    }
+    .phase-pill.done {
+      background: rgba(16, 185, 129, 0.24);
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: #0f172a;
+      font-weight: 700;
+      transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.38);
+    }
+    .btn-primary:hover:not(:disabled) {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+    }
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0px) scale(0.98);
+    }
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .toggle-btn {
+      transition: all 0.18s ease;
+    }
+    .toggle-btn.active {
+      background: #38bdf8;
+      color: #0f172a;
+      border-color: #7dd3fc;
+      font-weight: 600;
+    }
+    .lang-pill {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: #fde68a;
+      font-weight: 700;
+      transition: all 0.18s ease;
+    }
+    .lang-pill:hover {
+      background: rgba(245, 158, 11, 0.2);
+      color: #ffffff;
+    }
+    .toast-enter {
+      animation: toastSlide 0.28s ease-out forwards;
+    }
+    @keyframes toastSlide {
+      from { opacity: 0; transform: translate(-50%, -12px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .pulse-ring {
+      animation: pulseGlow 1.8s infinite;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+      50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+    }
+    input[type="range"] {
+      accent-color: #f59e0b;
+    }
+    .thin-scroll::-webkit-scrollbar { width: 5px; }
+    .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+    .thin-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 99px; }
+  </style>
+</head>
+<body>
+  <!-- 3D Viewport -->
+  <div id="canvas-container" aria-label="3D High-Rise Construction Site"></div>
+
+  <!-- Top Navigation & Progress Bar -->
+  <header class="fixed top-2 left-2 right-2 z-20 pointer-events-none flex flex-col gap-2">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <!-- Brand & Score -->
+      <div class="glass-panel pointer-events-auto rounded-xl px-3 py-2 flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold text-sm shadow">
+          SB
+        </div>
+        <div class="leading-tight">
+          <div id="brand-title" class="text-sm font-extrabold tracking-tight text-white">Skyline Builder <span class="text-amber-400">3D</span></div>
+          <div id="brand-subtitle" class="text-[11px] text-slate-300 hidden sm:block">Interactive High-Rise Engineering</div>
+        </div>
+        <div class="h-6 w-px bg-slate-700 mx-1 hidden sm:block"></div>
+        <div class="flex items-center gap-2 text-xs">
+          <div id="score-wrap" class="px-2 py-1 rounded-lg bg-slate-800/90 border border-slate-700 flex items-center gap-1.5" title="Engineering Score">
+            <span class="text-amber-400 font-bold">★</span>
+            <span id="score-display" class="font-bold text-white tabular-nums">0</span>
+          </div>
+          <div id="height-wrap" class="px-2 py-1 rounded-lg bg-slate-800/90 border border-slate-700 hidden md:flex items-center gap-1.5" title="Tower Height">
+            <span class="text-sky-400 font-bold">↕</span>
+            <span id="height-display" class="font-semibold text-slate-200 tabular-nums">0 m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- View & Utility Controls -->
+      <div class="glass-panel pointer-events-auto rounded-xl px-2 py-1.5 flex items-center gap-1.5 flex-wrap">
+        <button id="btn-lang" type="button" class="lang-pill px-2.5 py-1.5 rounded-lg text-xs" title="Switch Language / 切換語言">
+          繁中 / EN
+        </button>
+        <button id="btn-xray" type="button" class="toggle-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 text-slate-200 border border-slate-700 hover:bg-slate-700" title="Toggle X-Ray Cutaway View (X)">
+          X-Ray
+        </button>
+        <button id="btn-lighting" type="button" class="toggle-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 text-slate-200 border border-slate-700 hover:bg-slate-700" title="Cycle Day / Sunset / Night">
+          ☀ Day
+        </button>
+        <button id="btn-mute" type="button" class="toggle-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 text-slate-200 border border-slate-700 hover:bg-slate-700" title="Toggle Sound Effects">
+          🔊 SFX
+        </button>
+        <button id="btn-reset-cam" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 text-slate-200 border border-slate-700 hover:bg-slate-700" title="Reset Camera View">
+          ↺ View
+        </button>
+        <button id="btn-help" type="button" class="w-7 h-7 rounded-lg text-xs font-bold bg-slate-800/80 text-slate-200 border border-slate-700 hover:bg-slate-700 flex items-center justify-center" title="Controls & Guide">
+          ?
+        </button>
+      </div>
+    </div>
+
+    <!-- 7-Stage Construction Timeline -->
+    <div id="phase-bar" class="glass-panel pointer-events-auto rounded-xl px-2 py-1.5 flex items-center gap-1 overflow-x-auto max-w-full self-start">
+      <!-- Populated dynamically -->
+    </div>
+  </header>
+
+  <!-- Toast Feedback Banner -->
+  <div id="toast" class="fixed top-28 left-1/2 -translate-x-1/2 z-40 pointer-events-none hidden">
+    <div id="toast-inner" class="glass-panel rounded-full px-4 py-2 text-xs sm:text-sm font-semibold text-amber-300 border-amber-400/40 whitespace-nowrap">
+    </div>
+  </div>
+
+  <!-- Left / Bottom-Left Interactive Phase & Learning Panel -->
+  <aside id="phase-panel" class="fixed bottom-3 left-3 z-20 w-[calc(100%-1.5rem)] sm:w-80 md:w-96 max-h-[54vh] flex flex-col glass-panel rounded-2xl overflow-hidden transition-all">
+    <!-- Panel Header -->
+    <div class="px-4 py-3 border-b border-slate-700/70 flex items-center justify-between gap-2 bg-slate-900/50">
+      <div class="min-w-0">
+        <div id="phase-badge" class="text-[11px] font-bold uppercase tracking-wider text-amber-400">Phase 1 of 7</div>
+        <h1 id="phase-title" class="text-base font-extrabold text-white truncate">Site Excavation &amp; Shoring</h1>
+      </div>
+      <button id="btn-toggle-panel" type="button" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold shrink-0" title="Collapse/Expand Panel">
+        Hide
+      </button>
+    </div>
+
+    <!-- Collapsible Panel Body -->
+    <div id="phase-panel-body" class="p-4 overflow-y-auto thin-scroll flex flex-col gap-3">
+      <!-- Why It Matters (Educational Text) -->
+      <p id="phase-desc" class="text-xs sm:text-sm text-slate-200 leading-relaxed"></p>
+
+      <!-- Engineering Fact Box -->
+      <div id="phase-fact-box" class="glass-light rounded-xl p-2.5 text-xs text-sky-200 flex gap-2 items-start">
+        <span class="text-sky-400 font-bold shrink-0">💡</span>
+        <span id="phase-fact" class="leading-snug"></span>
+      </div>
+
+      <!-- Progress inside current phase -->
+      <div id="phase-progress-wrap" class="flex flex-col gap-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span id="phase-task-label" class="font-semibold text-slate-300">Progress</span>
+          <span id="phase-task-count" class="font-bold text-amber-400 tabular-nums">0 / 4</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+          <div id="phase-progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Stress Test Controls (Shown in Phase 8 / Completed Mode) -->
+      <div id="stress-controls" class="hidden flex-col gap-3 pt-1">
+        <div class="glass-light rounded-xl p-3 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between">
+            <label id="wind-label" for="wind-slider" class="text-xs font-bold text-sky-300">💨 Wind Speed</label>
+            <span id="wind-val" class="text-xs font-bold text-white tabular-nums">0 km/h</span>
+          </div>
+          <input id="wind-slider" type="range" min="0" max="160" value="0" step="5" class="w-full cursor-pointer" />
+
+          <div class="flex items-center justify-between pt-1">
+            <span id="tmd-label" class="text-xs text-slate-300">Tuned Mass Damper (TMD)</span>
+            <button id="btn-tmd-toggle" type="button" class="toggle-btn active px-2.5 py-1 rounded-lg text-[11px] border border-slate-600">
+              ON (-45% Sway)
+            </button>
+          </div>
+        </div>
+
+        <div class="glass-light rounded-xl p-3 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span id="quake-label" class="text-xs font-bold text-rose-300">🌎 Seismic Shake Test</span>
+            <span id="quake-status" class="text-[11px] font-semibold text-emerald-400">Stable</span>
+          </div>
+          <div class="flex gap-2">
+            <button id="btn-quake-mild" type="button" class="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100">
+              M 5.5 Quake
+            </button>
+            <button id="btn-quake-strong" type="button" class="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/80 hover:bg-rose-500 border border-rose-400/50 text-white">
+              M 7.2 Quake
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs px-1">
+          <span id="sway-label" class="text-slate-400">Peak Roof Sway:</span>
+          <span id="sway-readout" class="font-bold text-amber-300 tabular-nums">0.0 cm</span>
+        </div>
+      </div>
+
+      <!-- Primary Action Button -->
+      <div class="flex items-center gap-2 pt-1">
+        <button id="btn-action" type="button" class="btn-primary pulse-ring flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2">
+          <span id="btn-action-text">Excavate Zone (1/4)</span>
+        </button>
+        <button id="btn-restart" type="button" class="hidden py-2.5 px-3 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600" title="Build Again">
+          ↺ New Tower
+        </button>
+      </div>
+
+      <div id="click-hint" class="text-[11px] text-slate-400 text-center">
+        Tip: Click glowing targets in 3D or press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">Space</kbd> to build.
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Side: Camera Presets & 3D Part Inspector -->
+  <div class="fixed bottom-3 right-3 z-20 hidden sm:flex flex-col items-end gap-2 pointer-events-none">
+    <!-- Part Inspector Card (appears when user clicks a built part) -->
+    <div id="inspector-card" class="glass-panel pointer-events-auto rounded-xl p-3 w-64 hidden">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span id="inspector-title" class="text-xs font-bold text-amber-400">Structural Core</span>
+        <button id="btn-close-inspector" type="button" class="text-slate-400 hover:text-white text-xs font-bold px-1">✕</button>
+      </div>
+      <p id="inspector-text" class="text-[11px] text-slate-200 leading-relaxed"></p>
+    </div>
+
+    <!-- Camera Presets -->
+    <div class="glass-panel pointer-events-auto rounded-xl p-1.5 flex flex-col gap-1">
+      <div id="cam-heading" class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 pt-0.5">Camera</div>
+      <button type="button" data-cam="overview" class="cam-preset-btn px-2.5 py-1 rounded-lg text-xs text-left text-slate-200 hover:bg-slate-700/80">Overview</button>
+      <button type="button" data-cam="pit" class="cam-preset-btn px-2.5 py-1 rounded-lg text-xs text-left text-slate-200 hover:bg-slate-700/80">Foundation Pit</button>
+      <button type="button" data-cam="crane" class="cam-preset-btn px-2.5 py-1 rounded-lg text-xs text-left text-slate-200 hover:bg-slate-700/80">Mid-Tower</button>
+      <button type="button" data-cam="rooftop" class="cam-preset-btn px-2.5 py-1 rounded-lg text-xs text-left text-slate-200 hover:bg-slate-700/80">Rooftop &amp; TMD</button>
+    </div>
+  </div>
+
+  <!-- Engineering Decision Quiz Modal -->
+  <div id="quiz-modal" class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-panel rounded-2xl max-w-md w-full p-5 flex flex-col gap-4 border-amber-400/35">
+      <div class="flex items-center justify-between">
+        <span id="quiz-badge" class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold uppercase tracking-wider">Engineering Decision</span>
+        <span id="quiz-reward" class="text-xs font-bold text-emerald-400">+150 ★ Bonus</span>
+      </div>
+      <h2 id="quiz-question" class="text-base sm:text-lg font-extrabold text-white leading-snug"></h2>
+      <div id="quiz-options" class="flex flex-col gap-2"></div>
+      <div id="quiz-feedback" class="hidden rounded-xl p-3 text-xs sm:text-sm leading-relaxed"></div>
+      <button id="btn-quiz-continue" type="button" class="btn-primary hidden py-2.5 rounded-xl text-sm">
+        Continue Construction →
+      </button>
+    </div>
+  </div>
+
+  <!-- Welcome / Intro Overlay -->
+  <div id="intro-modal" class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel rounded-2xl max-w-lg w-full p-6 flex flex-col gap-4 border-amber-400/35">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-extrabold text-xl shadow-lg shrink-0">
+            SB
+          </div>
+          <div>
+            <h1 id="intro-title" class="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Skyline Builder 3D</h1>
+            <p id="intro-subtitle" class="text-xs sm:text-sm text-amber-300 font-medium">Discover how a modern high-rise rises from bedrock to spire</p>
+          </div>
+        </div>
+        <button id="btn-intro-lang" type="button" class="lang-pill px-2.5 py-1.5 rounded-lg text-xs shrink-0">
+          繁體中文
+        </button>
+      </div>
+
+      <p id="intro-desc" class="text-xs sm:text-sm text-slate-200 leading-relaxed"></p>
+
+      <div class="grid grid-cols-3 gap-2 text-center text-xs">
+        <div class="glass-light rounded-xl p-2.5">
+          <div class="text-lg mb-0.5">🏗️</div>
+          <div id="intro-card1-title" class="font-bold text-white">Build in 3D</div>
+          <div id="intro-card1-sub" class="text-[11px] text-slate-400">Click targets or tap Build</div>
+        </div>
+        <div class="glass-light rounded-xl p-2.5">
+          <div class="text-lg mb-0.5">🔍</div>
+          <div id="intro-card2-title" class="font-bold text-white">X-Ray Inside</div>
+          <div id="intro-card2-sub" class="text-[11px] text-slate-400">Inspect piles, core &amp; pipes</div>
+        </div>
+        <div class="glass-light rounded-xl p-2.5">
+          <div class="text-lg mb-0.5">🌪️</div>
+          <div id="intro-card3-title" class="font-bold text-white">Stress Test</div>
+          <div id="intro-card3-sub" class="text-[11px] text-slate-400">Wind, TMD &amp; Quakes</div>
+        </div>
+      </div>
+
+      <button id="btn-start-game" type="button" class="btn-primary py-3 rounded-xl text-sm sm:text-base mt-1">
+        Start Construction Site →
+      </button>
+    </div>
+  </div>
+
+  <!-- Help Modal -->
+  <div id="help-modal" class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-panel rounded-2xl max-w-md w-full p-5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h2 id="help-title" class="text-base font-extrabold text-white">Controls &amp; Tips</h2>
+        <button id="btn-close-help" type="button" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200">Close</button>
+      </div>
+      <ul id="help-list" class="text-xs sm:text-sm text-slate-200 space-y-2 list-disc pl-4"></ul>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. BILINGUAL STRINGS (ENGLISH & TRADITIONAL CHINESE / 繁體中文)
+      // =========================================================================
+      const I18N = {
+        en: {
+          docTitle: 'Skyline Builder 3D — How a Modern High-Rise Is Built',
+          brandTitleHtml: 'Skyline Builder <span class="text-amber-400">3D</span>',
+          brandSubtitle: 'Interactive High-Rise Engineering',
+          langBtn: '繁中 / EN',
+          introLangBtn: '繁體中文',
+          xrayBtn: 'X-Ray',
+          lighting: ['☀ Day', '🌅 Sunset', '🌙 Night'],
+          sfxOn: '🔊 SFX',
+          sfxOff: '🔇 Muted',
+          resetView: '↺ View',
+          hidePanel: 'Hide',
+          showPanel: 'Show',
+          progressLabel: 'Progress',
+          phaseOf: (n) => `Phase ${n} of 7`,
+          completedBadge: 'Completed Tower',
+          windLabel: '💨 Wind Speed',
+          tmdLabel: 'Tuned Mass Damper (TMD)',
+          tmdOn: 'ON (-45% Sway)',
+          tmdOff: 'OFF (No Damper)',
+          quakeLabel: '🌎 Seismic Shake Test',
+          quakeStable: 'Stable',
+          quakeShaking: (m) => `M ${m} Shaking!`,
+          quakeHeld: 'Core Held Firm!',
+          quakeMild: 'M 5.5 Quake',
+          quakeStrong: 'M 7.2 Quake',
+          swayLabel: 'Peak Roof Sway:',
+          newTowerBtn: '↺ New Tower',
+          clickHintHtml: 'Tip: Click glowing targets in 3D or press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">Space</kbd> to build.',
+          camHeading: 'Camera',
+          camPresets: { overview: 'Overview', pit: 'Foundation Pit', crane: 'Mid-Tower', rooftop: 'Rooftop & TMD' },
+          quizBadge: 'Engineering Decision',
+          quizReward: '+150 ★ Bonus',
+          quizContinue: 'Continue Construction →',
+          quizCorrectPrefix: '✓ ',
+          quizWrongPrefix: 'Not quite! ',
+          introTitle: 'Skyline Builder 3D',
+          introSubtitle: 'Discover how a modern high-rise rises from bedrock to spire',
+          introDescHtml: 'Step into the boots of a structural engineer! Guide a 12-story glass-and-steel tower through all <strong>7 real-world construction phases</strong>—from digging into bedrock and climbing the concrete core to hoisting steel beams, installing hidden MEP systems, and testing your finished skyscraper against hurricane winds and earthquakes.',
+          introCards: [
+            ['Build in 3D', 'Click targets or tap Build'],
+            ['X-Ray Inside', 'Inspect piles, core & pipes'],
+            ['Stress Test', 'Wind, TMD & Quakes']
+          ],
+          startGameBtn: 'Start Construction Site →',
+          helpTitle: 'Controls & Tips',
+          closeBtn: 'Close',
+          helpItemsHtml: [
+            '<strong>Orbit Camera:</strong> Drag anywhere on the 3D scene (1 finger on touch).',
+            '<strong>Zoom:</strong> Mouse scroll wheel or 2-finger pinch.',
+            '<strong>Build:</strong> Click glowing amber targets in 3D, click the main <strong>Build</strong> button, or press <strong>Space</strong>.',
+            '<strong>Inspect Any Part:</strong> Click on built elements (piles, core, steel, glass, crane, damper) to read how they work.',
+            '<strong>X-Ray View (X):</strong> See underground bedrock piles, internal MEP pipes, and the rooftop Tuned Mass Damper.'
+          ],
+          toasts: {
+            mepDone: 'MEP installed! Toggle X-Ray anytime to inspect pipes & ducts.',
+            tmdDone: 'Tuned Mass Damper installed! (Visible in X-Ray mode)',
+            towerDone: '🎉 High-Rise Complete! Test wind & earthquakes below!',
+            unlocked: (title) => `Unlocked: ${title}`,
+            restarted: 'New construction site ready!'
+          },
+          phases: [
+            {
+              shortName: '1. Excavate',
+              title: 'Site Excavation & Shoring',
+              desc: 'Before a skyscraper can go up, builders must dig deep down to remove soft soil and reach strong load-bearing layers. Steel retaining walls hold back the surrounding city streets.',
+              fact: 'Deep urban pits use "diaphragm" or "secant pile" retaining walls braced by steel struts so neighboring roads and pipes never slide into the excavation.',
+              actionVerb: 'Excavate Zone',
+              quizAfter: {
+                question: 'Soil tests reveal 12 meters of soft clay before solid bedrock. How should we support our 12-story tower?',
+                options: [
+                  { text: 'Pour a thin concrete pad right on the surface clay', correct: false, explain: 'Soft clay compresses unevenly under heavy towers, causing dangerous tilting or cracking.' },
+                  { text: 'Drill deep concrete piles all the way down to bedrock', correct: true, explain: 'Correct! Deep piles transfer tens of thousands of tons straight into solid bedrock—like tree roots anchoring a tall oak.' },
+                  { text: 'Fill the pit with gravel and build directly on top', correct: false, explain: 'Gravel alone still rests on the soft clay below and cannot anchor a tall building against wind uplift.' }
+                ]
+              }
+            },
+            {
+              shortName: '2. Foundation',
+              title: 'Deep Piles & Mat Foundation',
+              desc: 'Drilled concrete piles (caissons) anchor into bedrock underground. On top, workers tie a dense grid of steel rebar and pour a thick reinforced concrete "mat slab" to distribute the building’s weight evenly.',
+              fact: 'Concrete is super strong when squeezed (compression), while steel rebar is super strong when stretched (tension). Together they form reinforced concrete!',
+              stepLabels: ['Drill Bedrock Piles', 'Lay Steel Rebar Grid', 'Pour Concrete Mat Slab'],
+              actionVerb: 'Build Foundation'
+            },
+            {
+              shortName: '3. Core & Crane',
+              title: 'Concrete Core & Tower Crane',
+              desc: 'Almost every modern high-rise is built around a central reinforced concrete core housing elevators and stairs. It acts like a rigid spine resisting wind and earthquakes, while a tower crane climbs beside it.',
+              fact: 'Self-climbing "jump-form" molds slide up the core every few days, letting crews pour a new core level every week.',
+              stepLabels: ['Erect Tower Crane', 'Pour Core Shaft (Floors 1–4)', 'Climb Core (Floors 5–8)', 'Top Out Core (Floors 9–12)'],
+              actionVerb: 'Raise Core'
+            },
+            {
+              shortName: '4. Steel Frame',
+              title: 'Structural Steel Skeleton',
+              desc: 'Now the tower crane hoists high-strength steel columns and horizontal I-beams, bolting them around the central core to create open, column-free office or apartment floors.',
+              fact: 'Steel beams are fabricated off-site to millimeter precision and lifted into place in multi-story "trees" to speed up construction.',
+              stepLabels: ['Hoist Steel (Floors 1–3)', 'Hoist Steel (Floors 4–6)', 'Hoist Steel (Floors 7–9)', 'Hoist Steel (Floors 10–12)'],
+              actionVerb: 'Hoist Steel Tier',
+              quizAfter: {
+                question: 'Why do high-rises use both a stiff central concrete core AND a flexible outer steel frame?',
+                options: [
+                  { text: 'Because concrete is too heavy to make a core', correct: false, explain: 'Actually, concrete cores are heavy—and that mass helps stiffen the tower against sway!' },
+                  { text: 'The core resists sideways wind/quakes while the steel frame opens up wide interior spaces', correct: true, explain: 'Spot on! This "core-and-frame" system combines lateral stiffness with spacious, flexible floor plans.' },
+                  { text: 'Steel is only used to hold up the glass windows', correct: false, explain: 'Steel columns and beams carry the gravity loads of the floors, furniture, and people all the way down.' }
+                ]
+              }
+            },
+            {
+              shortName: '5. Floors',
+              title: 'Composite Floor Slabs',
+              desc: 'Corrugated steel decking is laid across the steel beams, then topped with pumped concrete. Once cured, each floor acts like a rigid horizontal plate locking the columns and core together.',
+              fact: 'High-pressure concrete pumps can push liquid concrete more than 500 meters straight up through vertical steel pipes!',
+              stepLabels: ['Pour Slabs (Floors 1–3)', 'Pour Slabs (Floors 4–6)', 'Pour Slabs (Floors 7–9)', 'Pour Slabs (Floors 10–12)'],
+              actionVerb: 'Pour Floor Tier'
+            },
+            {
+              shortName: '6. MEP & Glass',
+              title: 'MEP Systems & Curtain Wall',
+              desc: 'Inside, crews install MEP (Mechanical air ducts, Electrical power, Plumbing/fire sprinklers)—the building’s organs. Outside, prefabricated glass curtain wall panels hang from the floor edges to seal out weather.',
+              fact: 'A "curtain wall" carries no building weight—it literally hangs from the floor slabs like a curtain, while double-glazed glass insulates against heat and street noise.',
+              stepLabels: ['Install MEP Risers & Ducts', 'Hang Glass (Floors 1–3)', 'Hang Glass (Floors 4–6)', 'Hang Glass (Floors 7–9)', 'Hang Glass (Floors 10–12)'],
+              actionVerb: 'Install Systems & Glass',
+              quizAfter: {
+                question: 'Do the sleek glass panels on a modern skyscraper help hold up the floors above them?',
+                options: [
+                  { text: 'Yes, tempered glass carries half the building weight', correct: false, explain: 'Glass is brittle under heavy structural loads—if it held up the floors, a small shift could shatter it!' },
+                  { text: 'No—they hang as a non-structural "curtain wall" from the concrete floor slabs', correct: true, explain: 'Exactly! Curtain walls only carry their own weight and push wind loads back into the floor slabs.' },
+                  { text: 'Only on the bottom three floors', correct: false, explain: 'Even lobby glass walls are supported by steel frames or fins, not carrying upper-story gravity loads.' }
+                ]
+              }
+            },
+            {
+              shortName: '7. Crown & TMD',
+              title: 'Tuned Mass Damper & Topping Out',
+              desc: 'Tall buildings naturally sway in strong winds. Engineers install a Tuned Mass Damper—a giant suspended steel pendulum near the roof that swings opposite to the wind—plus the rooftop crown and spire!',
+              fact: 'Taipei 101’s famous Tuned Mass Damper is a 660-metric-ton golden steel sphere that cuts wind sway by up to 40%. Toggle X-Ray to see ours swing!',
+              stepLabels: ['Install Tuned Mass Damper', 'Build Rooftop Crown & Mechanicals', 'Raise Spire & Topping Out'],
+              actionVerb: 'Finish Rooftop'
+            },
+            {
+              shortName: '★ Test Lab',
+              title: 'Tower Complete — Stress Test Lab!',
+              desc: 'Congratulations! Your 12-story high-rise is open. Test how your engineering holds up against hurricane winds and earthquakes, toggle the Tuned Mass Damper, and switch to X-Ray or Night mode!',
+              fact: 'Try cranking wind to 150 km/h and toggling the Tuned Mass Damper ON/OFF while in X-Ray mode to see the pendulum counter-swing in real time.',
+              actionVerb: 'Stress Test Active'
+            }
+          ],
+          inspect: {
+            bedrock: { title: 'Bedrock Layer', text: 'Solid underground rock that provides an immovable anchor for deep skyscraper foundations.' },
+            piles: { title: 'Deep Foundation Piles', text: 'Reinforced concrete caissons drilled deep into bedrock to transfer the tower’s massive weight safely underground.' },
+            shoring: { title: 'Retaining Wall & Bracing', text: 'Steel soldier piles and cross-bracing keep surrounding city streets from collapsing into the excavation pit.' },
+            matslab: { title: 'Reinforced Concrete Mat Slab', text: 'A thick steel-and-concrete raft that ties all the foundation piles together and distributes column loads evenly.' },
+            core: { title: 'Central Concrete Core', text: 'The tower’s rigid spine! Houses elevators, fire stairs, and utility shafts while resisting sideways wind and seismic forces.' },
+            crane: { title: 'Tower Crane', text: 'Anchored to the building, it hoists heavy steel beams, rebar, and glass curtain wall panels high into the sky.' },
+            steel: { title: 'Structural Steel Frame', text: 'High-strength I-beams and columns bolted to the core carry gravity loads and allow open, flexible floor layouts.' },
+            slab: { title: 'Composite Floor Slab', text: 'Corrugated metal decking topped with concrete ties the frame together horizontally like a stiff diaphragm.' },
+            mep: { title: 'MEP Systems (Organs)', text: 'Mechanical (cyan HVAC ducts), Electrical (amber conduits), and Plumbing (blue water risers) keep the tower livable.' },
+            glass: { title: 'Glass Curtain Wall', text: 'Prefabricated double-glazed aluminum-and-glass panels hung from floor edges to block weather while letting in daylight.' },
+            tmd: { title: 'Tuned Mass Damper (TMD)', text: 'A giant suspended steel pendulum near the top floor that swings out of phase with wind gusts to reduce tower sway.' },
+            crown: { title: 'Architectural Crown & Spire', text: 'Screens rooftop cooling towers and houses communication antennas plus red aviation warning beacons.' }
+          }
+        },
+        zh: {
+          docTitle: '摩天大樓建造實驗室 3D — Skyline Builder',
+          brandTitleHtml: '摩天大樓建造 <span class="text-amber-400">3D</span>',
+          brandSubtitle: '現代高層建築結構互動教學',
+          langBtn: 'EN / 繁中',
+          introLangBtn: 'English',
+          xrayBtn: 'X光透視',
+          lighting: ['☀ 白天', '🌅 黃昏', '🌙 夜晚'],
+          sfxOn: '🔊 音效',
+          sfxOff: '🔇 靜音',
+          resetView: '↺ 重設視角',
+          hidePanel: '收合',
+          showPanel: '展開',
+          progressLabel: '施工進度',
+          phaseOf: (n) => `第 ${n} 階段（共 7 階段）`,
+          completedBadge: '大樓落成',
+          windLabel: '💨 強風風速',
+          tmdLabel: '調諧質量阻尼器 (TMD)',
+          tmdOn: '開啟（減震 45%）',
+          tmdOff: '關閉（無阻尼器）',
+          quakeLabel: '🌎 地震耐震測試',
+          quakeStable: '結構穩定',
+          quakeShaking: (m) => `規模 ${m} 搖晃中！`,
+          quakeHeld: '核心筒穩固抗震！',
+          quakeMild: '規模 5.5 地震',
+          quakeStrong: '規模 7.2 強震',
+          swayLabel: '頂樓最大擺幅：',
+          newTowerBtn: '↺ 重新建造',
+          clickHintHtml: '提示：點擊 3D 場景中的發光區域，或按 <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">空白鍵</kbd> 施工。',
+          camHeading: '攝影機視角',
+          camPresets: { overview: '全景總覽', pit: '深開挖基礎', crane: '中段鋼構與塔吊', rooftop: '屋頂與阻尼器' },
+          quizBadge: '結構工程決策',
+          quizReward: '+150 ★ 加分',
+          quizContinue: '繼續下一階段施工 →',
+          quizCorrectPrefix: '✓ 答對了！',
+          quizWrongPrefix: '再想想喔！',
+          introTitle: '摩天大樓建造實驗室 3D',
+          introSubtitle: '從地下岩盤到頂樓尖塔，親手探索現代高樓的誕生',
+          introDescHtml: '化身為結構工程師，帶領這棟 12 層樓的現代鋼骨玻璃大樓完成 <strong>7 大真實施工階段</strong>——從深開挖擋土、鑽掘岩盤基樁、攀升混凝土核心筒，到吊裝鋼構、配置機電管線與玻璃帷幕，最後在強風與地震中測試你的建築成果！',
+          introCards: [
+            ['3D 互動施工', '點擊發光目標或按鈕'],
+            ['X 光透視內部', '觀察基樁、核心與管線'],
+            ['抗風耐震測試', '強風、阻尼器與地震']
+          ],
+          startGameBtn: '進入工地開始建造 →',
+          helpTitle: '操作說明與小撇步',
+          closeBtn: '關閉',
+          helpItemsHtml: [
+            '<strong>旋轉視角：</strong>在 3D 畫面中按住並拖曳滑鼠（手機請單指滑動）。',
+            '<strong>縮放畫面：</strong>使用滑鼠滾輪，或手機雙指縮放。',
+            '<strong>進行施工：</strong>直接點擊 3D 中發光的琥珀色目標、按下「施工」按鈕，或按鍵盤<strong>空白鍵</strong>。',
+            '<strong>檢視構件知識：</strong>點擊已建好的構件（基樁、核心筒、鋼構、玻璃、塔吊、阻尼器）即可閱讀結構原理。',
+            '<strong>X 光透視 (X 鍵)：</strong>隨時透視地下岩盤基樁、樓層內的機電管線，以及屋頂的調諧質量阻尼器。'
+          ],
+          toasts: {
+            mepDone: '機電管線安裝完成！隨時開啟「X光透視」查看內部管路。',
+            tmdDone: '調諧質量阻尼器安裝完成！（開啟 X光透視即可看見）',
+            towerDone: '🎉 摩天大樓完工！快來下方進行強風與地震測試！',
+            unlocked: (title) => `進入新階段：${title}`,
+            restarted: '全新工地已就緒，開始建造吧！'
+          },
+          phases: [
+            {
+              shortName: '1. 基地開挖',
+              title: '基地開挖與擋土支撐',
+              desc: '高樓要蓋得高，必須先往下挖深，移除表層軟弱土壤以接觸堅硬地層。周圍同時施作擋土牆與鋼支撐，防止鄰近馬路與管線坍塌滑落。',
+              fact: '都會區深開挖常使用「連續壁」搭配水平鋼支撐，就像在地下築起一圈鋼鐵圍牆，牢牢撐住四周的土壓與地下水。',
+              actionVerb: '開挖土方區域',
+              quizAfter: {
+                question: '地質鑽探顯示地表下 12 公尺都是軟弱黏土層，再往下才是堅硬岩盤。這棟 12 層大樓應該採用哪種基礎？',
+                options: [
+                  { text: '直接在軟弱黏土表層灌漿做薄薄的水泥板', correct: false, explain: '軟弱黏土承受高樓重壓會產生不均勻沉陷，導致大樓傾斜或開裂。' },
+                  { text: '鑽掘深層混凝土基樁，一路打入地下堅硬岩盤', correct: true, explain: '完全正確！深層基樁就像大樹的深根，能把數萬噸建築重量穩穩傳遞到堅固的岩盤上。' },
+                  { text: '在坑裡填滿碎石後直接往上蓋', correct: false, explain: '碎石底下依然是軟弱黏土，無法承受高樓重量與強風帶來的傾覆力。' }
+                ]
+              }
+            },
+            {
+              shortName: '2. 深層基礎',
+              title: '深層基樁與筏式基礎',
+              desc: '先將鑽掘混凝土基樁錨定至地下岩盤，再於坑底綁紮高密度鋼筋網，澆置厚實的鋼筋混凝土「筏式基礎（大底）」，讓整棟大樓的重量均勻分散。',
+              fact: '混凝土非常耐壓（抗壓強度高），鋼筋則非常耐拉（抗拉強度高）；兩者結合就是現代建築最強的「鋼筋混凝土 (RC)」！',
+              stepLabels: ['鑽掘岩盤深層基樁', '綁紮基礎底層鋼筋網', '澆置鋼筋混凝土筏式基礎'],
+              actionVerb: '施作深層基礎'
+            },
+            {
+              shortName: '3. 核心筒',
+              title: '混凝土核心筒與塔式起重機',
+              desc: '現代高樓幾乎都有一個中央鋼筋混凝土「核心筒」，裡面配置電梯井與逃生梯，同時扮演建築的堅硬脊椎，抵抗側向強風與地震；一旁則架起高聳的塔吊協助吊裝。',
+              fact: '工程師使用可自行攀升的「自爬式模板」，每幾天就往上推升一層，讓中央核心筒以極快的速度節節拔高。',
+              stepLabels: ['架設塔式起重機（塔吊）', '澆置核心筒（1–4 樓）', '爬升核心筒（5–8 樓）', '核心筒封頂（9–12 樓）'],
+              actionVerb: '拉升核心筒'
+            },
+            {
+              shortName: '4. 鋼構骨架',
+              title: '高強度結構鋼骨',
+              desc: '接著由塔式起重機將高強度鋼柱與水平 H 型鋼樑吊上高空，與中央核心筒鎖固組裝，打造出寬敞無柱的辦公或居住空間。',
+              fact: '所有鋼構件都在工廠以毫米級精準度預先裁切鑽孔，運到工地後直接吊裝鎖固，大幅縮短施工時間。',
+              stepLabels: ['吊裝鋼構（1–3 樓）', '吊裝鋼構（4–6 樓）', '吊裝鋼構（7–9 樓）', '吊裝鋼構（10–12 樓）'],
+              actionVerb: '吊裝鋼構層',
+              quizAfter: {
+                question: '為什麼現代高樓常採用「中央混凝土核心筒＋外圍鋼構骨架」的複合設計？',
+                options: [
+                  { text: '因為混凝土太重，不能拿來蓋外牆', correct: false, explain: '其實混凝土的重量放在中央核心筒，反而能提供極佳的抗傾覆剛性！' },
+                  { text: '核心筒負責抵抗強風與地震，外圍鋼構則提供大跨距的寬敞室內空間', correct: true, explain: '答對了！這種「核心筒外框系統」同時兼具高抗震剛性與靈活開闊的樓層格局。' },
+                  { text: '鋼骨只是用來掛玻璃窗戶而已', correct: false, explain: '鋼柱與鋼樑承擔了各樓層地板、人員與設備的垂直重力，並將力量傳導至基礎。' }
+                ]
+              }
+            },
+            {
+              shortName: '5. 複合樓板',
+              title: '鋼承板與複合樓板澆置',
+              desc: '工人在鋼樑上鋪設浪板狀的「鋼承板」，再以高壓幫浦將混凝土抽送上樓澆置。硬化後，每一層樓板就像堅固的水平隔板，將外圍鋼柱與中央核心筒牢牢鎖成一體。',
+              fact: '現代超高壓混凝土輸送幫浦，甚至能將液態混凝土一口氣垂直打上超過 500 公尺的高空！',
+              stepLabels: ['澆置樓板（1–3 樓）', '澆置樓板（4–6 樓）', '澆置樓板（7–9 樓）', '澆置樓板（10–12 樓）'],
+              actionVerb: '澆置樓板層'
+            },
+            {
+              shortName: '6. 機電帷幕',
+              title: '機電管線 (MEP) 與玻璃帷幕牆',
+              desc: '室內同步配置 MEP 系統（空調風管、電力幹線、給排水與消防管線），就像大樓的器官與血管；外部則吊掛預鑄玻璃帷幕單元，隔絕風雨並引入自然採光。',
+              fact: '「玻璃帷幕牆」不承擔任何樓層重量，而是像窗簾一樣掛在樓板邊緣，雙層中空玻璃更能隔熱並阻擋街頭噪音。',
+              stepLabels: ['安裝機電管線與風管 (MEP)', '吊掛玻璃帷幕（1–3 樓）', '吊掛玻璃帷幕（4–6 樓）', '吊掛玻璃帷幕（7–9 樓）', '吊掛玻璃帷幕（10–12 樓）'],
+              actionVerb: '安裝系統與帷幕',
+              quizAfter: {
+                question: '現代摩天大樓閃亮的玻璃帷幕牆，會幫忙支撐上方樓層的重量嗎？',
+                options: [
+                  { text: '會，強化玻璃承擔了一半的建築重量', correct: false, explain: '玻璃屬於脆性材料，若承受結構重壓，只要微小變形就可能整片破裂！' },
+                  { text: '不會，它是非結構性的「帷幕」，只是懸掛在各樓層樓板邊緣', correct: true, explain: '沒錯！帷幕牆只承受自身重量，並把正面吹來的風壓安全傳回給樓板與主結構。' },
+                  { text: '只有一到三樓大廳的玻璃有承重', correct: false, explain: '連挑高大廳的玻璃牆也是靠內部鋼架或玻璃肋支撐，並不承載上方樓層重力。' }
+                ]
+              }
+            },
+            {
+              shortName: '7. 阻尼封頂',
+              title: '調諧質量阻尼器與屋頂封頂',
+              desc: '高樓在強風下會自然搖晃。工程師在頂層懸掛一顆巨大的「調諧質量阻尼器 (TMD)」鋼球，利用反相擺動來抵消風力晃動，最後裝上屋頂冠飾與尖塔完成封頂！',
+              fact: '著名的台北 101 內就懸掛著一顆重達 660 公噸的金色大鋼球，能減少高達 40% 的強風搖晃！開啟「X光透視」就能看到它在擺動。',
+              stepLabels: ['吊裝調諧質量阻尼器 (TMD)', '建造屋頂冠飾與冷卻水塔', '吊裝尖塔與封頂儀式'],
+              actionVerb: '完成屋頂工程'
+            },
+            {
+              shortName: '★ 測試實驗室',
+              title: '摩天大樓完工 — 抗風耐震測試！',
+              desc: '恭喜你完成了這棟 12 層現代高樓！現在快來調整強風風速、發動地震測試，切換「調諧質量阻尼器」開關，並打開 X 光透視或夜晚模式欣賞成果！',
+              fact: '試著把風速拉到 150 km/h，並開啟「X光透視」同時切換 TMD 開/關，親眼看看大金球如何反方向擺動穩住大樓！',
+              actionVerb: '測試模式啟動中'
+            }
+          ],
+          inspect: {
+            bedrock: { title: '地下堅硬岩盤', text: '深埋地底的堅實岩層，是摩天大樓深層基樁最穩固的支撐錨點。' },
+            piles: { title: '深層鑽掘基樁', text: '貫穿軟土直達岩盤的鋼筋混凝土大柱，將整棟大樓的龐大重量安全傳入地底。' },
+            shoring: { title: '擋土壁與鋼支撐', text: '深開挖時用來擋住四周泥土與地下水，保護鄰近道路與建築不會下陷。' },
+            matslab: { title: '鋼筋混凝土筏式基礎', text: '如同一艘厚實的鋼筋混凝土大筏，將所有基樁連成一體並均勻分散柱子荷載。' },
+            core: { title: '中央混凝土核心筒', text: '大樓的鋼鐵脊椎！內藏電梯井與逃生梯，也是抵抗強風與地震側向力的主力。' },
+            crane: { title: '塔式起重機（塔吊）', text: '固定於工地與建築旁的超高起重機，負責將沉重的鋼樑、鋼筋與帷幕吊上高空。' },
+            steel: { title: '結構鋼骨骨架', text: '高強度鋼柱與 H 型鋼樑組成 3D 網格，承載樓層重力並創造開闊無柱空間。' },
+            slab: { title: '複合鋼承板樓板', text: '浪板鋼承板上方澆置混凝土，固化後將整層鋼骨與核心筒牢牢拉結在一起。' },
+            mep: { title: '機電管線系統 (MEP)', text: '青色空調風管、琥珀色電力幹線與藍色給排水立管，是維持大樓運作的器官。' },
+            glass: { title: '玻璃帷幕牆', text: '工廠預鑄的鋁框複層玻璃單元，懸掛於樓板外緣以擋風遮雨、隔熱並採光。' },
+            tmd: { title: '調諧質量阻尼器 (TMD)', text: '懸掛於頂層的巨型金屬擺錘，在強風吹襲時反向擺動，大幅降低樓頂搖晃感。' },
+            crown: { title: '屋頂冠飾與尖塔', text: '修飾屋頂空調冷卻設備，並設置通訊天線與夜間閃爍的紅色航空警示燈。' }
+          }
+        }
+      };
+
+      const PHASE_META = [
+        { steps: 4, camera: 'pit', hasQuiz: true },
+        { steps: 3, camera: 'pit', hasQuiz: false },
+        { steps: 4, camera: 'crane', hasQuiz: false },
+        { steps: 4, camera: 'crane', hasQuiz: true },
+        { steps: 4, camera: 'overview', hasQuiz: false },
+        { steps: 5, camera: 'overview', hasQuiz: true },
+        { steps: 3, camera: 'rooftop', hasQuiz: false },
+        { steps: 1, camera: 'overview', hasQuiz: false }
+      ];
+
+      // =========================================================================
+      // 2. SYNTHESIZED WEB AUDIO SOUND ENGINE (No External Files)
+      // =========================================================================
+      const Sound = {
+        ctx: null,
+        muted: false,
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        },
+        play(type) {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          try {
+            if (type === 'dig') {
+              this._noise(now, 0.22, 180, 0.16);
+              this._tone(now, 95, 55, 0.18, 'triangle', 0.16);
+            } else if (type === 'pile') {
+              this._tone(now, 130, 38, 0.25, 'sine', 0.28);
+              this._noise(now, 0.1, 320, 0.1);
+            } else if (type === 'concrete') {
+              this._noise(now, 0.35, 650, 0.11);
+              this._tone(now, 110, 75, 0.2, 'sine', 0.12);
+            } else if (type === 'steel') {
+              this._tone(now, 520, 480, 0.22, 'triangle', 0.14);
+              this._tone(now, 1045, 980, 0.16, 'sine', 0.09);
+              this._noise(now, 0.06, 2200, 0.08);
+            } else if (type === 'glass') {
+              this._tone(now, 1320, 1480, 0.12, 'sine', 0.1);
+              this._tone(now + 0.04, 1760, 1760, 0.1, 'sine', 0.07);
+            } else if (type === 'success') {
+              [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+                this._tone(now + i * 0.08, freq, freq, 0.24, 'triangle', 0.12);
+              });
+            } else if (type === 'error') {
+              this._tone(now, 220, 165, 0.22, 'sawtooth', 0.08);
+            } else if (type === 'quake') {
+              this._noise(now, 0.9, 95, 0.22);
+              this._tone(now, 60, 35, 0.85, 'sine', 0.2);
+            }
+          } catch (e) { /* ignore audio errors */ }
+        },
+        _tone(start, f1, f2, dur, wave, vol) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = wave;
+          osc.frequency.setValueAtTime(f1, start);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, f2), start + dur);
+          gain.gain.setValueAtTime(vol, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + dur + 0.02);
+        },
+        _noise(start, dur, filterFreq, vol) {
+          const bufSize = Math.floor(this.ctx.sampleRate * dur);
+          const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+          const src = this.ctx.createBufferSource();
+          src.buffer = buf;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(filterFreq, start);
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(vol, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          src.start(start);
+          src.stop(start + dur + 0.02);
+        }
+      };
+
+      // =========================================================================
+      // 3. GAME STATE
+      // =========================================================================
+      let savedLang = 'en';
+      try {
+        const stored = localStorage.getItem('skyline_builder_lang');
+        if (stored === 'zh' || stored === 'en') savedLang = stored;
+      } catch (e) { /* ignore storage errors */ }
+
+      const state = {
+        lang: savedLang,
+        phase: 0,
+        step: 0,
+        score: 0,
+        xray: false,
+        lightingMode: 0, // 0 = Day, 1 = Sunset, 2 = Night
+        panelCollapsed: false,
+        busy: false,
+        quizOpen: false,
+        activeQuizPhase: -1,
+        quizAnsweredIdx: -1,
+        activeInspectKey: null,
+        windSpeed: 0,
+        tmdEnabled: true,
+        quakeIntensity: 0,
+        quakeTimer: 0,
+        quakeMag: 0,
+        quakeJustHeld: false,
+        towerHeightMeters: 0,
+        excavatedZones: [false, false, false, false]
+      };
+
+      function t() {
+        return I18N[state.lang];
+      }
+
+      // =========================================================================
+      // 4. THREE.JS SCENE SETUP
+      // =========================================================================
+      const container = document.getElementById('canvas-container');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x93c5fd);
+      scene.fog = new THREE.FogExp2(0x93c5fd, 0.0065);
+
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.5, 450);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      container.appendChild(renderer.domElement);
+
+      // Lighting
+      const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x334155, 0.85);
+      hemiLight.position.set(0, 80, 0);
+      scene.add(hemiLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.35);
+      sunLight.position.set(42, 68, 36);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.near = 10;
+      sunLight.shadow.camera.far = 190;
+      const d = 48;
+      sunLight.shadow.camera.left = -d;
+      sunLight.shadow.camera.right = d;
+      sunLight.shadow.camera.top = d;
+      sunLight.shadow.camera.bottom = -d;
+      sunLight.shadow.bias = -0.0005;
+      scene.add(sunLight);
+
+      const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.35);
+      fillLight.position.set(-35, 30, -30);
+      scene.add(fillLight);
+
+      // =========================================================================
+      // 5. CUSTOM SMOOTH ORBIT CAMERA CONTROLLER
+      // =========================================================================
+      const camCtrl = {
+        theta: Math.PI * 0.24,
+        phi: 1.08,
+        radius: 46,
+        target: new THREE.Vector3(0, 6, 0),
+        goalTheta: Math.PI * 0.24,
+        goalPhi: 1.08,
+        goalRadius: 46,
+        goalTarget: new THREE.Vector3(0, 6, 0),
+        isDragging: false,
+        dragMoved: false,
+        startX: 0,
+        startY: 0,
+        lastX: 0,
+        lastY: 0,
+        pinchDist: 0,
+        presets: {
+          overview: { theta: 0.78, phi: 1.08, radius: 52, target: new THREE.Vector3(0, 14, 0) },
+          pit:      { theta: 0.72, phi: 1.02, radius: 34, target: new THREE.Vector3(0, -1, 0) },
+          crane:    { theta: 0.65, phi: 1.05, radius: 46, target: new THREE.Vector3(0, 16, 0) },
+          rooftop:  { theta: 0.88, phi: 1.08, radius: 32, target: new THREE.Vector3(0, 31, 0) }
+        },
+        setPreset(name) {
+          const p = this.presets[name];
+          if (!p) return;
+          this.goalTheta = p.theta;
+          this.goalPhi = p.phi;
+          this.goalRadius = p.radius;
+          this.goalTarget.copy(p.target);
+        },
+        update(shakeX, shakeZ) {
+          this.theta += (this.goalTheta - this.theta) * 0.1;
+          this.phi += (this.goalPhi - this.phi) * 0.1;
+          this.radius += (this.goalRadius - this.radius) * 0.1;
+          this.target.lerp(this.goalTarget, 0.1);
+
+          const sinPhi = Math.sin(this.phi);
+          camera.position.set(
+            this.target.x + this.radius * sinPhi * Math.sin(this.theta) + shakeX,
+            this.target.y + this.radius * Math.cos(this.phi),
+            this.target.z + this.radius * sinPhi * Math.cos(this.theta) + shakeZ
+          );
+          camera.lookAt(this.target.x + shakeX * 0.3, this.target.y, this.target.z + shakeZ * 0.3);
+        }
+      };
+
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      function onPointerDown(e) {
+        if (e.touches && e.touches.length === 2) {
+          camCtrl.pinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          camCtrl.isDragging = false;
+          return;
+        }
+        const pt = e.touches ? e.touches[0] : e;
+        camCtrl.isDragging = true;
+        camCtrl.dragMoved = false;
+        camCtrl.startX = camCtrl.lastX = pt.clientX;
+        camCtrl.startY = camCtrl.lastY = pt.clientY;
+      }
+
+      function onPointerMove(e) {
+        if (e.touches && e.touches.length === 2) {
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          const delta = camCtrl.pinchDist - dist;
+          camCtrl.goalRadius = THREE.MathUtils.clamp(camCtrl.goalRadius + delta * 0.12, 16, 95);
+          camCtrl.pinchDist = dist;
+          return;
+        }
+        if (!camCtrl.isDragging) return;
+        const pt = e.touches ? e.touches[0] : e;
+        const dx = pt.clientX - camCtrl.lastX;
+        const dy = pt.clientY - camCtrl.lastY;
+        if (Math.hypot(pt.clientX - camCtrl.startX, pt.clientY - camCtrl.startY) > 6) {
+          camCtrl.dragMoved = true;
+        }
+        camCtrl.goalTheta -= dx * 0.0075;
+        camCtrl.goalPhi = THREE.MathUtils.clamp(camCtrl.goalPhi - dy * 0.0065, 0.28, 1.52);
+        camCtrl.lastX = pt.clientX;
+        camCtrl.lastY = pt.clientY;
+      }
+
+      function onPointerUp(e) {
+        if (!camCtrl.isDragging) return;
+        camCtrl.isDragging = false;
+        if (!camCtrl.dragMoved && !state.quizOpen) {
+          const pt = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : e;
+          handleCanvasClick(pt.clientX, pt.clientY);
+        }
+      }
+
+      renderer.domElement.addEventListener('mousedown', onPointerDown);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+      renderer.domElement.addEventListener('touchstart', onPointerDown, { passive: true });
+      renderer.domElement.addEventListener('touchmove', onPointerMove, { passive: true });
+      renderer.domElement.addEventListener('touchend', onPointerUp);
+      renderer.domElement.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        camCtrl.goalRadius = THREE.MathUtils.clamp(camCtrl.goalRadius + e.deltaY * 0.035, 16, 95);
+      }, { passive: false });
+
+      // =========================================================================
+      // 6. WORLD, UNDERGROUND GEOLOGY & CITY CONTEXT
+      // =========================================================================
+      const worldGroup = new THREE.Group();
+      scene.add(worldGroup);
+
+      const mats = {
+        topsoil: new THREE.MeshStandardMaterial({ color: 0x855e42, roughness: 0.92 }),
+        clay: new THREE.MeshStandardMaterial({ color: 0x6b4f3a, roughness: 0.95 }),
+        bedrock: new THREE.MeshStandardMaterial({ color: 0x3f4752, roughness: 0.9 }),
+        concrete: new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85, metalness: 0.05 }),
+        concreteDark: new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 }),
+        steel: new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.45, metalness: 0.65 }),
+        steelDark: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.75 }),
+        rebar: new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.6, metalness: 0.7 }),
+        decking: new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.5, metalness: 0.6 }),
+        craneYellow: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.42, metalness: 0.35 }),
+        glass: new THREE.MeshPhysicalMaterial({
+          color: 0x38bdf8,
+          roughness: 0.12,
+          metalness: 0.25,
+          transparent: true,
+          opacity: 0.62,
+          reflectivity: 0.9
+        }),
+        mullion: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.8 }),
+        mepWater: new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35, metalness: 0.4 }),
+        mepHvac: new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.35, metalness: 0.55 }),
+        mepElec: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.4 }),
+        tmdGold: new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.25, metalness: 0.85, emissive: 0x78350f, emissiveIntensity: 0.25 }),
+        beaconRed: new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 1.5 }),
+        interiorGlow: new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.0, roughness: 0.9 }),
+        targetGlow: new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.45, wireframe: false }),
+        targetWire: new THREE.MeshBasicMaterial({ color: 0xfde047, wireframe: true })
+      };
+
+      function tagInspect(obj, key) {
+        obj.userData.inspectKey = key;
+        obj.traverse((child) => {
+          if (child.isMesh) child.userData.inspectKey = key;
+        });
+        return obj;
+      }
+
+      const PIT_HALF = 8.0;
+      const PIT_DEPTH = 4.2;
+
+      function buildCityEnvironment() {
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.92 });
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.88 });
+        const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 });
+
+        const outer = 70;
+        const slabs = [
+          { x: 0, z: -(PIT_HALF + (outer - PIT_HALF) / 2), w: outer * 2, d: outer - PIT_HALF },
+          { x: 0, z: (PIT_HALF + (outer - PIT_HALF) / 2), w: outer * 2, d: outer - PIT_HALF },
+          { x: -(PIT_HALF + (outer - PIT_HALF) / 2), z: 0, w: outer - PIT_HALF, d: PIT_HALF * 2 },
+          { x: (PIT_HALF + (outer - PIT_HALF) / 2), z: 0, w: outer - PIT_HALF, d: PIT_HALF * 2 }
+        ];
+        slabs.forEach((s) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(s.w, 1.2, s.d), groundMat);
+          m.position.set(s.x, -0.6, s.z);
+          m.receiveShadow = true;
+          worldGroup.add(m);
+        });
+
+        const apronParts = [
+          { x: 0, z: -10.5, w: 25, d: 5 },
+          { x: 0, z: 10.5, w: 25, d: 5 },
+          { x: -10.5, z: 0, w: 5, d: 16 },
+          { x: 10.5, z: 0, w: 5, d: 16 }
+        ];
+        apronParts.forEach((a) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(a.w, 0.25, a.d), sidewalkMat);
+          m.position.set(a.x, 0.08, a.z);
+          m.receiveShadow = true;
+          worldGroup.add(m);
+        });
+
+        const roadNS1 = new THREE.Mesh(new THREE.PlaneGeometry(7, 140), roadMat);
+        roadNS1.rotation.x = -Math.PI / 2;
+        roadNS1.position.set(-17, 0.05, 0);
+        roadNS1.receiveShadow = true;
+        worldGroup.add(roadNS1);
+
+        const roadNS2 = roadNS1.clone();
+        roadNS2.position.set(17, 0.05, 0);
+        worldGroup.add(roadNS2);
+
+        const roadEW1 = new THREE.Mesh(new THREE.PlaneGeometry(140, 7), roadMat);
+        roadEW1.rotation.x = -Math.PI / 2;
+        roadEW1.position.set(0, 0.06, 17);
+        roadEW1.receiveShadow = true;
+        worldGroup.add(roadEW1);
+
+        const roadEW2 = roadEW1.clone();
+        roadEW2.position.set(0, 0.06, -17);
+        worldGroup.add(roadEW2);
+
+        const clayBlock = new THREE.Mesh(new THREE.BoxGeometry(20, 4.5, 20), mats.clay);
+        clayBlock.position.set(0, -6.5, 0);
+        clayBlock.receiveShadow = true;
+        worldGroup.add(clayBlock);
+
+        const bedrockBlock = tagInspect(
+          new THREE.Mesh(new THREE.BoxGeometry(26, 4.0, 26), mats.bedrock),
+          'bedrock'
+        );
+        bedrockBlock.position.set(0, -10.75, 0);
+        bedrockBlock.receiveShadow = true;
+        worldGroup.add(bedrockBlock);
+
+        const pitFloor = new THREE.Mesh(new THREE.PlaneGeometry(PIT_HALF * 2, PIT_HALF * 2), mats.clay);
+        pitFloor.rotation.x = -Math.PI / 2;
+        pitFloor.position.set(0, -PIT_DEPTH, 0);
+        pitFloor.receiveShadow = true;
+        worldGroup.add(pitFloor);
+
+        const fenceMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.6 });
+        const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
+        const fHalf = 9.2;
+        for (let side = 0; side < 4; side++) {
+          const g = new THREE.Group();
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(fHalf * 2, 0.12, 0.08), fenceMat);
+          rail.position.y = 0.9;
+          g.add(rail);
+          const rail2 = rail.clone();
+          rail2.position.y = 0.45;
+          g.add(rail2);
+          for (let i = -3; i <= 3; i++) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), postMat);
+            post.position.set(i * 3, 0.55, 0);
+            g.add(post);
+          }
+          if (side === 0) g.position.set(0, 0.15, -fHalf);
+          if (side === 1) g.position.set(0, 0.15, fHalf);
+          if (side === 2) { g.position.set(-fHalf, 0.15, 0); g.rotation.y = Math.PI / 2; }
+          if (side === 3) { g.position.set(fHalf, 0.15, 0); g.rotation.y = Math.PI / 2; }
+          worldGroup.add(g);
+        }
+
+        const neighborColors = [0x334155, 0x475569, 0x3b4d63, 0x52525b, 0x3f4e5c];
+        const neighborSpecs = [
+          [-30, -28, 12, 11, 10], [-30, -10, 11, 16, 12], [-30, 8, 10, 9, 11], [-30, 28, 13, 14, 10],
+          [30, -28, 12, 15, 11],  [30, -8, 10, 12, 10],   [30, 10, 12, 18, 11], [30, 28, 11, 10, 12],
+          [-10, -30, 11, 13, 10], [8, -30, 12, 19, 10],   [-10, 30, 12, 8, 10], [10, 30, 11, 12, 10]
+        ];
+        neighborSpecs.forEach(([x, z, w, h, d], idx) => {
+          const bMat = new THREE.MeshStandardMaterial({
+            color: neighborColors[idx % neighborColors.length],
+            roughness: 0.78,
+            metalness: 0.15
+          });
+          const bldg = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bMat);
+          bldg.position.set(x, h / 2, z);
+          bldg.castShadow = true;
+          bldg.receiveShadow = true;
+          worldGroup.add(bldg);
+        });
+
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.85 });
+        const treeCoords = [[-12.5, -12.5], [12.5, -12.5], [-12.5, 12.5], [12.5, 12.5], [-12.5, 0], [12.5, 0]];
+        treeCoords.forEach(([x, z]) => {
+          const tree = new THREE.Group();
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 1.6, 6), trunkMat);
+          trunk.position.y = 0.8;
+          trunk.castShadow = true;
+          const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 0), leafMat);
+          crown.position.y = 2.2;
+          crown.castShadow = true;
+          tree.add(trunk, crown);
+          tree.position.set(x, 0.2, z);
+          worldGroup.add(tree);
+        });
+      }
+      buildCityEnvironment();
+
+      // =========================================================================
+      // 7. BUILDING STRUCTURE GROUPS (Animated & Swaying)
+      // =========================================================================
+      const buildingRoot = new THREE.Group();
+      scene.add(buildingRoot);
+
+      const soilBlocksGroup = new THREE.Group();
+      const shoringGroup = new THREE.Group();
+      const pilesGroup = new THREE.Group();
+      const rebarGroup = new THREE.Group();
+      const matSlabGroup = new THREE.Group();
+      const coreGroup = new THREE.Group();
+      const steelGroup = new THREE.Group();
+      const floorsGroup = new THREE.Group();
+      const mepGroup = new THREE.Group();
+      const glassGroup = new THREE.Group();
+      const crownGroup = new THREE.Group();
+      const targetsGroup = new THREE.Group();
+      const particlesGroup = new THREE.Group();
+      const windLinesGroup = new THREE.Group();
+
+      worldGroup.add(soilBlocksGroup, shoringGroup, pilesGroup, targetsGroup, particlesGroup, windLinesGroup);
+      buildingRoot.add(rebarGroup, matSlabGroup, coreGroup, steelGroup, floorsGroup, mepGroup, glassGroup, crownGroup);
+
+      const NUM_FLOORS = 12;
+      const FLOOR_H = 2.4;
+      const TOWER_W = 11.2;
+      const TOWER_D = 11.2;
+      const CORE_W = 4.2;
+
+      const excavator = new THREE.Group();
+      function buildExcavator() {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 2.8), mats.craneYellow);
+        body.position.y = 1.1;
+        body.castShadow = true;
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 1.2), mats.steelDark);
+        cab.position.set(-0.4, 2.0, 0.3);
+        const tracksL = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 3.2), mats.steelDark);
+        tracksL.position.set(-0.95, 0.3, 0);
+        const tracksR = tracksL.clone();
+        tracksR.position.x = 0.95;
+
+        const armPivot = new THREE.Group();
+        armPivot.position.set(0.3, 1.5, 1.2);
+        const boom = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 3.0), mats.craneYellow);
+        boom.position.set(0, 0.9, 1.2);
+        boom.rotation.x = -0.6;
+        const stick = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.2, 0.28), mats.craneYellow);
+        stick.position.set(0, 0.8, 2.5);
+        stick.rotation.x = 0.4;
+        const bucket = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.7), mats.steelDark);
+        bucket.position.set(0, -0.3, 2.8);
+        armPivot.add(boom, stick, bucket);
+
+        excavator.add(body, cab, tracksL, tracksR, armPivot);
+        excavator.userData.arm = armPivot;
+        excavator.position.set(10.8, 0.2, 5.5);
+        excavator.rotation.y = -Math.PI * 0.65;
+        worldGroup.add(excavator);
+      }
+      buildExcavator();
+
+      const crane = {
+        group: new THREE.Group(),
+        jibPivot: new THREE.Group(),
+        trolley: new THREE.Group(),
+        cable: null,
+        hook: null,
+        built: false,
+        targetAngle: 0.4,
+        currentAngle: 0.4,
+        targetTrolley: 8,
+        currentTrolley: 8,
+        targetCableLen: 6,
+        currentCableLen: 6
+      };
+
+      function buildTowerCrane() {
+        crane.group.clear();
+        crane.jibPivot.clear();
+        crane.trolley.clear();
+
+        const mastH = 38;
+        const mast = new THREE.Group();
+        const postGeo = new THREE.BoxGeometry(0.22, mastH, 0.22);
+        [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]].forEach(([x, z]) => {
+          const p = new THREE.Mesh(postGeo, mats.craneYellow);
+          p.position.set(x, mastH / 2, z);
+          p.castShadow = true;
+          mast.add(p);
+        });
+        for (let y = 1.5; y < mastH; y += 2.2) {
+          const ring = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.14, 1.5), mats.craneYellow);
+          ring.position.y = y;
+          mast.add(ring);
+        }
+        const base = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.2, 3.2), mats.concreteDark);
+        base.position.y = 0.6;
+        crane.group.add(base, mast);
+
+        crane.jibPivot.position.set(0, mastH, 0);
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8, 1.8), mats.steelDark);
+        cab.position.set(1.1, 0.2, 0);
+        const apex = new THREE.Mesh(new THREE.ConeGeometry(1.1, 3.8, 4), mats.craneYellow);
+        apex.position.y = 2.6;
+        apex.rotation.y = Math.PI / 4;
+
+        const jibArm = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 22), mats.craneYellow);
+        jibArm.position.set(0, 0.8, 9);
+        jibArm.castShadow = true;
+        const counterJib = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 8), mats.craneYellow);
+        counterJib.position.set(0, 0.8, -5.5);
+        const counterWeight = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 2.4), mats.concreteDark);
+        counterWeight.position.set(0, 0.7, -8.2);
+
+        crane.jibPivot.add(cab, apex, jibArm, counterJib, counterWeight);
+
+        crane.trolley.position.set(0, 0.2, 11);
+        const trolleyBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, 1.4), mats.steelDark);
+        crane.cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 6), mats.steelDark);
+        crane.cable.position.y = -3;
+        crane.hook = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.6), mats.craneYellow);
+        crane.hook.position.y = -6;
+        crane.trolley.add(trolleyBox, crane.cable, crane.hook);
+        crane.jibPivot.add(crane.trolley);
+
+        crane.group.add(crane.jibPivot);
+        crane.group.position.set(-10.5, 0, -9.5);
+        tagInspect(crane.group, 'crane');
+        crane.group.visible = false;
+        worldGroup.add(crane.group);
+      }
+      buildTowerCrane();
+
+      const tmd = {
+        pivot: new THREE.Group(),
+        sphere: null,
+        angle: 0,
+        built: false
+      };
+
+      // =========================================================================
+      // 8. INTERACTIVE 3D TARGETS & PARTICLES
+      // =========================================================================
+      const activeAnimations = [];
+      const activeParticles = [];
+
+      function animateProp(mesh, fromY, toY, duration = 0.55) {
+        mesh.position.y = fromY;
+        activeAnimations.push({ mesh, fromY, toY, elapsed: 0, duration });
+      }
+
+      function spawnBurst(x, y, z, colorHex, count = 14) {
+        const geo = new THREE.BoxGeometry(0.32, 0.32, 0.32);
+        const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9 });
+        for (let i = 0; i < count; i++) {
+          const p = new THREE.Mesh(geo, mat.clone());
+          p.position.set(x + (Math.random() - 0.5) * 3, y + Math.random() * 1.2, z + (Math.random() - 0.5) * 3);
+          const vx = (Math.random() - 0.5) * 6;
+          const vy = 2.5 + Math.random() * 4.5;
+          const vz = (Math.random() - 0.5) * 6;
+          particlesGroup.add(p);
+          activeParticles.push({ mesh: p, vx, vy, vz, life: 0.7 + Math.random() * 0.4, maxLife: 1.0 });
+        }
+      }
+
+      const windStreaks = [];
+      function initWindStreaks() {
+        const mat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0 });
+        const geo = new THREE.BoxGeometry(5.5, 0.12, 0.12);
+        for (let i = 0; i < 24; i++) {
+          const s = new THREE.Mesh(geo, mat.clone());
+          s.position.set((Math.random() - 0.5) * 45, 3 + Math.random() * 32, (Math.random() - 0.5) * 26);
+          windLinesGroup.add(s);
+          windStreaks.push({ mesh: s, speed: 18 + Math.random() * 14 });
+        }
+      }
+      initWindStreaks();
+
+      // =========================================================================
+      // 9. CONSTRUCTION PHASE BUILDERS (3D Geometry Generation)
+      // =========================================================================
+      function resetExcavationSoil() {
+        soilBlocksGroup.clear();
+        state.excavatedZones = [false, false, false, false];
+        const coords = [[-4, -4], [4, -4], [-4, 4], [4, 4]];
+        coords.forEach(([x, z], idx) => {
+          const block = new THREE.Mesh(new THREE.BoxGeometry(7.95, PIT_DEPTH, 7.95), mats.topsoil);
+          block.position.set(x, -PIT_DEPTH / 2, z);
+          block.receiveShadow = true;
+          block.userData.soilIndex = idx;
+          soilBlocksGroup.add(block);
+        });
+      }
+
+      function buildShoringWall(zoneIdx) {
+        const wallH = PIT_DEPTH + 0.3;
+        const wallGeoNS = new THREE.BoxGeometry(8, wallH, 0.35);
+        const wallGeoEW = new THREE.BoxGeometry(0.35, wallH, 8);
+        const configs = [
+          [{ geo: wallGeoNS, x: -4, z: -PIT_HALF + 0.15 }, { geo: wallGeoEW, x: -PIT_HALF + 0.15, z: -4 }],
+          [{ geo: wallGeoNS, x: 4, z: -PIT_HALF + 0.15 },  { geo: wallGeoEW, x: PIT_HALF - 0.15, z: -4 }],
+          [{ geo: wallGeoNS, x: -4, z: PIT_HALF - 0.15 },  { geo: wallGeoEW, x: -PIT_HALF + 0.15, z: 4 }],
+          [{ geo: wallGeoNS, x: 4, z: PIT_HALF - 0.15 },   { geo: wallGeoEW, x: PIT_HALF - 0.15, z: 4 }]
+        ];
+        configs[zoneIdx].forEach((c) => {
+          const wall = tagInspect(new THREE.Mesh(c.geo, mats.steelDark), 'shoring');
+          wall.position.set(c.x, -PIT_DEPTH / 2, c.z);
+          wall.receiveShadow = true;
+          shoringGroup.add(wall);
+        });
+        const signs = [[-1, -1], [1, -1], [-1, 1], [1, 1]][zoneIdx];
+        const brace = tagInspect(new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.28, 0.28), mats.steel), 'shoring');
+        brace.position.set(signs[0] * 5.8, -1.2, signs[1] * 5.8);
+        brace.rotation.y = (signs[0] * signs[1] > 0) ? -Math.PI / 4 : Math.PI / 4;
+        shoringGroup.add(brace);
+      }
+
+      function buildFoundationStep(stepIdx) {
+        if (stepIdx === 0) {
+          const pileGeo = new THREE.CylinderGeometry(0.45, 0.45, 7.6, 12);
+          const pos = [-5.2, -1.75, 1.75, 5.2];
+          pos.forEach((x) => {
+            pos.forEach((z) => {
+              const pile = tagInspect(new THREE.Mesh(pileGeo, mats.concreteDark), 'piles');
+              pile.position.set(x, -7.8, z);
+              pilesGroup.add(pile);
+              animateProp(pile, -4.5, -7.8, 0.65);
+            });
+          });
+          Sound.play('pile');
+          spawnBurst(0, -PIT_DEPTH + 0.4, 0, 0x94a3b8, 18);
+        } else if (stepIdx === 1) {
+          const barGeoX = new THREE.BoxGeometry(13.2, 0.1, 0.1);
+          const barGeoZ = new THREE.BoxGeometry(0.1, 0.1, 13.2);
+          for (let i = -6; i <= 6; i += 1.2) {
+            const bx = tagInspect(new THREE.Mesh(barGeoX, mats.rebar), 'matslab');
+            bx.position.set(0, -PIT_DEPTH + 0.45, i);
+            const bz = tagInspect(new THREE.Mesh(barGeoZ, mats.rebar), 'matslab');
+            bz.position.set(i, -PIT_DEPTH + 0.55, 0);
+            rebarGroup.add(bx, bz);
+          }
+          Sound.play('steel');
+          spawnBurst(0, -PIT_DEPTH + 0.6, 0, 0xf97316, 14);
+        } else if (stepIdx === 2) {
+          const slab = tagInspect(new THREE.Mesh(new THREE.BoxGeometry(13.6, 1.2, 13.6), mats.concrete), 'matslab');
+          slab.position.set(0, -PIT_DEPTH + 0.6, 0);
+          slab.receiveShadow = true;
+          matSlabGroup.add(slab);
+          animateProp(slab, -PIT_DEPTH - 0.5, -PIT_DEPTH + 0.6, 0.55);
+
+          const bColGeo = new THREE.BoxGeometry(0.65, PIT_DEPTH - 1.2, 0.65);
+          [-5.4, 0, 5.4].forEach((x) => {
+            [-5.4, 0, 5.4].forEach((z) => {
+              if (x === 0 && z === 0) return;
+              const col = tagInspect(new THREE.Mesh(bColGeo, mats.concreteDark), 'matslab');
+              col.position.set(x, -(PIT_DEPTH - 1.2) / 2, z);
+              matSlabGroup.add(col);
+            });
+          });
+          Sound.play('concrete');
+          spawnBurst(0, -2.5, 0, 0xcbd5e1, 18);
+        }
+      }
+
+      function buildCoreStep(stepIdx) {
+        if (stepIdx === 0) {
+          crane.group.visible = true;
+          crane.built = true;
+          animateProp(crane.group, -18, 0, 0.7);
+          Sound.play('steel');
+          spawnBurst(-10.5, 2, -9.5, 0xf59e0b, 16);
+          return;
+        }
+        const segIdx = stepIdx - 1;
+        const segH = FLOOR_H * 4;
+        const yCenter = segIdx * segH + segH / 2;
+        const coreSeg = tagInspect(new THREE.Mesh(new THREE.BoxGeometry(CORE_W, segH - 0.04, CORE_W), mats.concrete), 'core');
+        coreSeg.position.set(0, yCenter, 0);
+        coreSeg.castShadow = true;
+        coreSeg.receiveShadow = true;
+        coreGroup.add(coreSeg);
+
+        for (let f = 0; f < 4; f++) {
+          const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.5, 0.12), mats.steelDark);
+          door.position.set(-0.8, segIdx * segH + f * FLOOR_H + 0.85, CORE_W / 2 + 0.02);
+          const door2 = door.clone();
+          door2.position.x = 0.8;
+          coreGroup.add(door, door2);
+        }
+
+        animateProp(coreSeg, yCenter - 3.5, yCenter, 0.6);
+        state.towerHeightMeters = Math.max(state.towerHeightMeters, (segIdx + 1) * 16);
+        Sound.play('concrete');
+        spawnBurst(0, (segIdx + 1) * segH, 0, 0xe2e8f0, 14);
+        swingCraneTo(0, (segIdx + 1) * segH);
+      }
+
+      function buildSteelTier(tierIdx) {
+        const startFloor = tierIdx * 3;
+        const tierH = FLOOR_H * 3;
+        const yBase = startFloor * FLOOR_H;
+        const tierGroup = new THREE.Group();
+
+        const halfW = TOWER_W / 2;
+        const colCoords = [
+          [-halfW, -halfW], [0, -halfW], [halfW, -halfW],
+          [-halfW, 0],                   [halfW, 0],
+          [-halfW, halfW],  [0, halfW],  [halfW, halfW]
+        ];
+        const colGeo = new THREE.BoxGeometry(0.42, tierH, 0.42);
+        colCoords.forEach(([x, z]) => {
+          const col = new THREE.Mesh(colGeo, mats.steel);
+          col.position.set(x, yBase + tierH / 2, z);
+          col.castShadow = true;
+          tierGroup.add(col);
+        });
+
+        const beamGeoX = new THREE.BoxGeometry(TOWER_W, 0.28, 0.24);
+        const beamGeoZ = new THREE.BoxGeometry(0.24, 0.28, TOWER_D);
+        for (let f = 1; f <= 3; f++) {
+          const fy = yBase + f * FLOOR_H;
+          [-halfW, 0, halfW].forEach((z) => {
+            const bx = new THREE.Mesh(beamGeoX, mats.steel);
+            bx.position.set(0, fy, z);
+            bx.castShadow = true;
+            tierGroup.add(bx);
+          });
+          [-halfW, 0, halfW].forEach((x) => {
+            const bz = new THREE.Mesh(beamGeoZ, mats.steel);
+            bz.position.set(x, fy, 0);
+            bz.castShadow = true;
+            tierGroup.add(bz);
+          });
+        }
+
+        tagInspect(tierGroup, 'steel');
+        steelGroup.add(tierGroup);
+        animateProp(tierGroup, 8, 0, 0.65);
+        Sound.play('steel');
+        spawnBurst(0, yBase + tierH, 0, 0xf97316, 16);
+        swingCraneTo(0, yBase + tierH);
+      }
+
+      function buildFloorTier(tierIdx) {
+        const startFloor = tierIdx * 3;
+        const tierGroup = new THREE.Group();
+
+        for (let f = 0; f < 3; f++) {
+          const floorNum = startFloor + f;
+          const fy = (floorNum + 1) * FLOOR_H;
+          const slab = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W + 0.3, 0.34, TOWER_D + 0.3), mats.concrete);
+          slab.position.set(0, fy + 0.15, 0);
+          slab.castShadow = true;
+          slab.receiveShadow = true;
+          tierGroup.add(slab);
+
+          const lightBox = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W - 1.2, 0.14, TOWER_D - 1.2), mats.interiorGlow);
+          lightBox.position.set(0, fy - 0.12, 0);
+          tierGroup.add(lightBox);
+        }
+
+        if (tierIdx === 0) {
+          const groundSlab = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W + 0.6, 0.4, TOWER_D + 0.6), mats.concrete);
+          groundSlab.position.set(0, 0.15, 0);
+          groundSlab.receiveShadow = true;
+          tierGroup.add(groundSlab);
+        }
+
+        tagInspect(tierGroup, 'slab');
+        floorsGroup.add(tierGroup);
+        animateProp(tierGroup, 3.5, 0, 0.5);
+        Sound.play('concrete');
+        spawnBurst(0, (startFloor + 3) * FLOOR_H, 0, 0xcbd5e1, 14);
+      }
+
+      function buildMepAndGlassStep(stepIdx) {
+        if (stepIdx === 0) {
+          const fullH = NUM_FLOORS * FLOOR_H;
+          const waterPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, fullH, 10), mats.mepWater);
+          waterPipe.position.set(2.4, fullH / 2, 1.5);
+          const waterPipe2 = waterPipe.clone();
+          waterPipe2.position.set(-2.4, fullH / 2, -1.5);
+
+          const hvacShaft = new THREE.Mesh(new THREE.BoxGeometry(0.55, fullH, 0.55), mats.mepHvac);
+          hvacShaft.position.set(2.5, fullH / 2, -1.5);
+
+          const elecRiser = new THREE.Mesh(new THREE.BoxGeometry(0.28, fullH, 0.28), mats.mepElec);
+          elecRiser.position.set(-2.5, fullH / 2, 1.5);
+
+          mepGroup.add(waterPipe, waterPipe2, hvacShaft, elecRiser);
+
+          for (let f = 1; f <= NUM_FLOORS; f++) {
+            const y = f * FLOOR_H - 0.35;
+            const ductX = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W - 1.4, 0.22, 0.38), mats.mepHvac);
+            ductX.position.set(0, y, -3.2);
+            const ductZ = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, TOWER_D - 1.4), mats.mepWater);
+            ductZ.position.set(3.2, y - 0.1, 0);
+            const elecRing = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W - 1.8, 0.12, 0.16), mats.mepElec);
+            elecRing.position.set(0, y, 3.2);
+            mepGroup.add(ductX, ductZ, elecRing);
+          }
+
+          tagInspect(mepGroup, 'mep');
+          Sound.play('steel');
+          spawnBurst(0, fullH / 2, 0, 0x06b6d4, 20);
+          showToast(t().toasts.mepDone);
+          return;
+        }
+
+        const tierIdx = stepIdx - 1;
+        const startFloor = tierIdx * 3;
+        const tierH = FLOOR_H * 3;
+        const yCenter = startFloor * FLOOR_H + tierH / 2;
+        const halfW = TOWER_W / 2 + 0.22;
+        const tierGlass = new THREE.Group();
+
+        const paneGeo = new THREE.BoxGeometry(TOWER_W + 0.4, tierH - 0.06, 0.12);
+        const faces = [
+          { x: 0, z: halfW, ry: 0 },
+          { x: 0, z: -halfW, ry: 0 },
+          { x: halfW, z: 0, ry: Math.PI / 2 },
+          { x: -halfW, z: 0, ry: Math.PI / 2 }
+        ];
+        faces.forEach((fc) => {
+          const pane = new THREE.Mesh(paneGeo, mats.glass);
+          pane.position.set(fc.x, yCenter, fc.z);
+          pane.rotation.y = fc.ry;
+          tierGlass.add(pane);
+
+          for (let m = -4; m <= 4; m++) {
+            const mul = new THREE.Mesh(new THREE.BoxGeometry(0.12, tierH, 0.2), mats.mullion);
+            if (fc.ry === 0) {
+              mul.position.set(m * 1.4, yCenter, fc.z + (fc.z > 0 ? 0.04 : -0.04));
+            } else {
+              mul.position.set(fc.x + (fc.x > 0 ? 0.04 : -0.04), yCenter, m * 1.4);
+              mul.rotation.y = Math.PI / 2;
+            }
+            tierGlass.add(mul);
+          }
+        });
+
+        tagInspect(tierGlass, 'glass');
+        glassGroup.add(tierGlass);
+        animateProp(tierGlass, 5, 0, 0.55);
+        Sound.play('glass');
+        spawnBurst(0, yCenter, halfW, 0x38bdf8, 14);
+        swingCraneTo(0, yCenter + 2);
+      }
+
+      function buildCrownStep(stepIdx) {
+        const roofY = NUM_FLOORS * FLOOR_H;
+        if (stepIdx === 0) {
+          tmd.pivot.clear();
+          tmd.pivot.position.set(0, roofY + 2.8, 0);
+
+          const frameTop = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.35, 5.2), mats.steelDark);
+          frameTop.position.set(0, roofY + 3.0, 0);
+          crownGroup.add(frameTop);
+
+          const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.6, 8), mats.steelDark);
+          cable.position.y = -1.8;
+          tmd.sphere = new THREE.Mesh(new THREE.SphereGeometry(1.75, 24, 24), mats.tmdGold);
+          tmd.sphere.position.y = -3.8;
+          tmd.sphere.castShadow = true;
+
+          tmd.pivot.add(cable, tmd.sphere);
+          tagInspect(tmd.pivot, 'tmd');
+          crownGroup.add(tmd.pivot);
+          tmd.built = true;
+
+          Sound.play('steel');
+          spawnBurst(0, roofY + 1, 0, 0xfbbf24, 18);
+          showToast(t().toasts.tmdDone);
+        } else if (stepIdx === 1) {
+          const crownH = 3.6;
+          const halfW = TOWER_W / 2 + 0.25;
+          const parapetGeo = new THREE.BoxGeometry(TOWER_W + 0.6, crownH, 0.25);
+          [
+            { x: 0, z: halfW, ry: 0 },
+            { x: 0, z: -halfW, ry: 0 },
+            { x: halfW, z: 0, ry: Math.PI / 2 },
+            { x: -halfW, z: 0, ry: Math.PI / 2 }
+          ].forEach((fc) => {
+            const p = new THREE.Mesh(parapetGeo, mats.glass);
+            p.position.set(fc.x, roofY + crownH / 2, fc.z);
+            p.rotation.y = fc.ry;
+            crownGroup.add(p);
+          });
+          const rim = new THREE.Mesh(new THREE.BoxGeometry(TOWER_W + 0.9, 0.35, TOWER_D + 0.9), mats.mullion);
+          rim.position.set(0, roofY + crownH, 0);
+          crownGroup.add(rim);
+
+          [-3.2, 3.2].forEach((x) => {
+            const unit = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 2.2), mats.concreteDark);
+            unit.position.set(x, roofY + 0.9, -3.0);
+            crownGroup.add(unit);
+          });
+
+          tagInspect(crownGroup, 'crown');
+          Sound.play('glass');
+          spawnBurst(0, roofY + 3, 0, 0x38bdf8, 16);
+        } else if (stepIdx === 2) {
+          const spireBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.6, 1.8, 12), mats.mullion);
+          spireBase.position.set(0, roofY + 4.2, 0);
+          const spireMast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.45, 9.5, 10), mats.decking);
+          spireMast.position.set(0, roofY + 9.5, 0);
+          const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), mats.beaconRed);
+          beacon.position.set(0, roofY + 14.3, 0);
+          beacon.userData.isBeacon = true;
+
+          crownGroup.add(spireBase, spireMast, beacon);
+          animateProp(spireMast, roofY + 14, roofY + 9.5, 0.65);
+
+          crane.group.visible = false;
+          excavator.visible = false;
+          state.towerHeightMeters = 64;
+          Sound.play('success');
+          spawnBurst(0, roofY + 12, 0, 0xfbbf24, 26);
+        }
+      }
+
+      function swingCraneTo(x, y) {
+        if (!crane.built) return;
+        const dx = x - crane.group.position.x;
+        const dz = 0 - crane.group.position.z;
+        crane.targetAngle = Math.atan2(dx, dz);
+        crane.targetTrolley = Math.min(18, Math.hypot(dx, dz));
+        crane.targetCableLen = Math.max(3, 38 - y - 2);
+      }
+
+      // =========================================================================
+      // 10. GLOWING 3D CLICK TARGETS FOR CURRENT STEP
+      // =========================================================================
+      function refresh3DTargets() {
+        targetsGroup.clear();
+        if (state.phase >= 7) return;
+
+        if (state.phase === 0) {
+          const coords = [[-4, -4], [4, -4], [-4, 4], [4, 4]];
+          coords.forEach(([x, z], idx) => {
+            if (state.excavatedZones[idx]) return;
+            const box = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.45, 7.2), mats.targetGlow.clone());
+            box.position.set(x, 0.35, z);
+            box.userData.targetZone = idx;
+            const wire = new THREE.Mesh(new THREE.BoxGeometry(7.25, 0.5, 7.25), mats.targetWire);
+            box.add(wire);
+            targetsGroup.add(box);
+          });
+          return;
+        }
+
+        let w = 11.4, h = 2.2, d = 11.4, x = 0, y = 1, z = 0;
+        if (state.phase === 1) {
+          w = 13.4; h = 1.4; d = 13.4; y = -PIT_DEPTH + 1.0;
+        } else if (state.phase === 2) {
+          if (state.step === 0) { w = 3.6; h = 6; d = 3.6; x = -10.5; y = 3; z = -9.5; }
+          else { w = CORE_W + 0.5; h = FLOOR_H * 4; d = CORE_W + 0.5; y = (state.step - 1) * FLOOR_H * 4 + (FLOOR_H * 2); }
+        } else if (state.phase === 3 || state.phase === 4) {
+          w = TOWER_W + 0.5; h = FLOOR_H * 3; d = TOWER_D + 0.5; y = state.step * FLOOR_H * 3 + (FLOOR_H * 1.5);
+        } else if (state.phase === 5) {
+          if (state.step === 0) { w = 6.2; h = NUM_FLOORS * FLOOR_H; d = 6.2; y = (NUM_FLOORS * FLOOR_H) / 2; }
+          else { w = TOWER_W + 0.8; h = FLOOR_H * 3; d = TOWER_D + 0.8; y = (state.step - 1) * FLOOR_H * 3 + (FLOOR_H * 1.5); }
+        } else if (state.phase === 6) {
+          w = TOWER_W + 0.8; h = 4.2; d = TOWER_D + 0.8; y = NUM_FLOORS * FLOOR_H + 2.2;
+        }
+
+        const ghost = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats.targetGlow.clone());
+        ghost.position.set(x, y, z);
+        ghost.userData.isTarget = true;
+        const wire = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, h + 0.08, d + 0.08), mats.targetWire);
+        ghost.add(wire);
+        targetsGroup.add(ghost);
+      }
+
+      // =========================================================================
+      // 11. GAME PROGRESSION & ACTION HANDLER
+      // =========================================================================
+      function performBuildStep(specificZoneIdx) {
+        if (state.busy || state.quizOpen || state.phase >= 7) return;
+        Sound.init();
+
+        const meta = PHASE_META[state.phase];
+
+        if (state.phase === 0) {
+          let zIdx = (typeof specificZoneIdx === 'number' && !state.excavatedZones[specificZoneIdx])
+            ? specificZoneIdx
+            : state.excavatedZones.findIndex((done) => !done);
+          if (zIdx === -1) return;
+
+          state.excavatedZones[zIdx] = true;
+          const block = soilBlocksGroup.children.find((m) => m.userData.soilIndex === zIdx);
+          if (block) {
+            spawnBurst(block.position.x, -1, block.position.z, 0x855e42, 16);
+            soilBlocksGroup.remove(block);
+          }
+          buildShoringWall(zIdx);
+          Sound.play('dig');
+          addScore(50);
+          state.step++;
+        } else if (state.phase === 1) {
+          buildFoundationStep(state.step);
+          addScore(75);
+          state.step++;
+        } else if (state.phase === 2) {
+          buildCoreStep(state.step);
+          addScore(80);
+          state.step++;
+        } else if (state.phase === 3) {
+          buildSteelTier(state.step);
+          addScore(90);
+          state.step++;
+        } else if (state.phase === 4) {
+          buildFloorTier(state.step);
+          addScore(85);
+          state.step++;
+        } else if (state.phase === 5) {
+          buildMepAndGlassStep(state.step);
+          addScore(95);
+          state.step++;
+        } else if (state.phase === 6) {
+          buildCrownStep(state.step);
+          addScore(110);
+          state.step++;
+        }
+
+        if (state.step >= meta.steps) {
+          if (meta.hasQuiz) {
+            refresh3DTargets();
+            updateUI();
+            const quizPhase = state.phase;
+            setTimeout(() => openQuiz(quizPhase), 450);
+            return;
+          } else {
+            advancePhase();
+            return;
+          }
+        }
+
+        refresh3DTargets();
+        updateUI();
+      }
+
+      function advancePhase() {
+        state.phase++;
+        state.step = 0;
+        if (state.phase < PHASE_META.length) {
+          camCtrl.setPreset(PHASE_META[state.phase].camera);
+          if (state.phase === 7) {
+            showToast(t().toasts.towerDone);
+          } else {
+            showToast(t().toasts.unlocked(t().phases[state.phase].title));
+          }
+        }
+        refresh3DTargets();
+        updateUI();
+      }
+
+      function addScore(pts) {
+        state.score += pts;
+        document.getElementById('score-display').textContent = state.score.toLocaleString();
+      }
+
+      // =========================================================================
+      // 12. RAYCASTING (Click 3D Targets OR Inspect Built Components)
+      // =========================================================================
+      function handleCanvasClick(clientX, clientY) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+
+        const targetHits = raycaster.intersectObjects(targetsGroup.children, true);
+        if (targetHits.length > 0) {
+          let obj = targetHits[0].object;
+          while (obj.parent && obj.parent !== targetsGroup) obj = obj.parent;
+          if (typeof obj.userData.targetZone === 'number') {
+            performBuildStep(obj.userData.targetZone);
+          } else {
+            performBuildStep();
+          }
+          return;
+        }
+
+        const inspectHits = raycaster.intersectObjects([buildingRoot, worldGroup], true);
+        for (let i = 0; i < inspectHits.length; i++) {
+          const key = inspectHits[i].object.userData.inspectKey;
+          if (key && t().inspect[key]) {
+            state.activeInspectKey = key;
+            renderInspector();
+            return;
+          }
+        }
+      }
+
+      function renderInspector() {
+        const card = document.getElementById('inspector-card');
+        if (!state.activeInspectKey) {
+          card.classList.add('hidden');
+          return;
+        }
+        const info = t().inspect[state.activeInspectKey];
+        if (!info) return;
+        document.getElementById('inspector-title').textContent = info.title;
+        document.getElementById('inspector-text').textContent = info.text;
+        card.classList.remove('hidden');
+      }
+
+      // =========================================================================
+      // 13. QUIZ MODAL (Supports Live Language Switching)
+      // =========================================================================
+      function renderQuizModal() {
+        if (!state.quizOpen || state.activeQuizPhase < 0) return;
+        const loc = t();
+        const quiz = loc.phases[state.activeQuizPhase].quizAfter;
+        if (!quiz) return;
+
+        document.getElementById('quiz-badge').textContent = loc.quizBadge;
+        document.getElementById('quiz-reward').textContent = loc.quizReward;
+        document.getElementById('quiz-question').textContent = quiz.question;
+        document.getElementById('btn-quiz-continue').textContent = loc.quizContinue;
+
+        const optsEl = document.getElementById('quiz-options');
+        const fbEl = document.getElementById('quiz-feedback');
+        const contBtn = document.getElementById('btn-quiz-continue');
+        optsEl.innerHTML = '';
+
+        quiz.options.forEach((opt, idx) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'w-full text-left px-3.5 py-2.5 rounded-xl text-xs sm:text-sm bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-100 transition-all';
+          btn.textContent = opt.text;
+
+          if (state.quizAnsweredIdx !== -1) {
+            btn.disabled = true;
+            if (idx === state.quizAnsweredIdx) {
+              if (opt.correct) btn.classList.add('bg-emerald-600/35', 'border-emerald-400', 'text-emerald-200');
+              else btn.classList.add('bg-rose-600/35', 'border-rose-400', 'text-rose-200');
+            }
+          } else {
+            btn.addEventListener('click', () => {
+              state.quizAnsweredIdx = idx;
+              if (opt.correct) {
+                addScore(150);
+                Sound.play('success');
+              } else {
+                Sound.play('error');
+              }
+              renderQuizModal();
+            });
+          }
+          optsEl.appendChild(btn);
+        });
+
+        if (state.quizAnsweredIdx !== -1) {
+          const chosen = quiz.options[state.quizAnsweredIdx];
+          if (chosen.correct) {
+            fbEl.className = 'rounded-xl p-3 text-xs sm:text-sm bg-emerald-950/80 border border-emerald-500/40 text-emerald-200';
+            fbEl.textContent = loc.quizCorrectPrefix + chosen.explain;
+          } else {
+            fbEl.className = 'rounded-xl p-3 text-xs sm:text-sm bg-amber-950/80 border border-amber-500/40 text-amber-200';
+            fbEl.textContent = loc.quizWrongPrefix + chosen.explain;
+          }
+          fbEl.classList.remove('hidden');
+          contBtn.classList.remove('hidden');
+        } else {
+          fbEl.classList.add('hidden');
+          contBtn.classList.add('hidden');
+        }
+      }
+
+      function openQuiz(phaseIdx) {
+        state.quizOpen = true;
+        state.activeQuizPhase = phaseIdx;
+        state.quizAnsweredIdx = -1;
+        renderQuizModal();
+        const modal = document.getElementById('quiz-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      document.getElementById('btn-quiz-continue').addEventListener('click', () => {
+        const modal = document.getElementById('quiz-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        state.quizOpen = false;
+        state.activeQuizPhase = -1;
+        state.quizAnsweredIdx = -1;
+        advancePhase();
+      });
+
+      // =========================================================================
+      // 14. X-RAY, LIGHTING & LANGUAGE MODES
+      // =========================================================================
+      function applyXRay() {
+        const on = state.xray;
+        mats.glass.opacity = on ? 0.14 : 0.62;
+        mats.concrete.transparent = on;
+        mats.concrete.opacity = on ? 0.28 : 1.0;
+        mats.concreteDark.transparent = on;
+        mats.concreteDark.opacity = on ? 0.45 : 1.0;
+        mats.clay.transparent = on;
+        mats.clay.opacity = on ? 0.25 : 1.0;
+        mats.mullion.transparent = on;
+        mats.mullion.opacity = on ? 0.25 : 1.0;
+        mats.steel.opacity = 1.0;
+        document.getElementById('btn-xray').classList.toggle('active', on);
+      }
+
+      function applyLighting() {
+        const btn = document.getElementById('btn-lighting');
+        if (state.lightingMode === 0) {
+          scene.background.setHex(0x93c5fd);
+          scene.fog.color.setHex(0x93c5fd);
+          sunLight.color.setHex(0xfffbeb);
+          sunLight.intensity = 1.35;
+          sunLight.position.set(42, 68, 36);
+          hemiLight.intensity = 0.85;
+          mats.interiorGlow.emissiveIntensity = 0.0;
+        } else if (state.lightingMode === 1) {
+          scene.background.setHex(0xfb923c);
+          scene.fog.color.setHex(0xfb923c);
+          sunLight.color.setHex(0xffedd5);
+          sunLight.intensity = 1.15;
+          sunLight.position.set(-55, 22, 30);
+          hemiLight.intensity = 0.6;
+          mats.interiorGlow.emissiveIntensity = 0.45;
+        } else {
+          scene.background.setHex(0x0f172a);
+          scene.fog.color.setHex(0x0f172a);
+          sunLight.color.setHex(0x60a5fa);
+          sunLight.intensity = 0.42;
+          sunLight.position.set(-25, 50, -35);
+          hemiLight.intensity = 0.35;
+          mats.interiorGlow.emissiveIntensity = 1.15;
+        }
+        btn.textContent = t().lighting[state.lightingMode];
+      }
+
+      function toggleLanguage() {
+        state.lang = state.lang === 'en' ? 'zh' : 'en';
+        try {
+          localStorage.setItem('skyline_builder_lang', state.lang);
+        } catch (e) { /* ignore storage errors */ }
+        applyLanguageStrings();
+        updateUI();
+        renderInspector();
+        renderQuizModal();
+      }
+
+      function applyLanguageStrings() {
+        const loc = t();
+        document.documentElement.lang = state.lang === 'zh' ? 'zh-Hant' : 'en';
+        document.title = loc.docTitle;
+
+        document.getElementById('brand-title').innerHTML = loc.brandTitleHtml;
+        document.getElementById('brand-subtitle').textContent = loc.brandSubtitle;
+        document.getElementById('btn-lang').textContent = loc.langBtn;
+        document.getElementById('btn-intro-lang').textContent = loc.introLangBtn;
+        document.getElementById('btn-xray').textContent = loc.xrayBtn;
+        document.getElementById('btn-lighting').textContent = loc.lighting[state.lightingMode];
+        document.getElementById('btn-mute').textContent = Sound.muted ? loc.sfxOff : loc.sfxOn;
+        document.getElementById('btn-reset-cam').textContent = loc.resetView;
+        document.getElementById('btn-toggle-panel').textContent = state.panelCollapsed ? loc.showPanel : loc.hidePanel;
+
+        document.getElementById('phase-task-label').textContent = loc.progressLabel;
+        document.getElementById('wind-label').textContent = loc.windLabel;
+        document.getElementById('tmd-label').textContent = loc.tmdLabel;
+        document.getElementById('btn-tmd-toggle').textContent = state.tmdEnabled ? loc.tmdOn : loc.tmdOff;
+        document.getElementById('quake-label').textContent = loc.quakeLabel;
+        document.getElementById('btn-quake-mild').textContent = loc.quakeMild;
+        document.getElementById('btn-quake-strong').textContent = loc.quakeStrong;
+        document.getElementById('sway-label').textContent = loc.swayLabel;
+        document.getElementById('btn-restart').textContent = loc.newTowerBtn;
+        document.getElementById('click-hint').innerHTML = loc.clickHintHtml;
+
+        if (state.quakeTimer > 0) {
+          document.getElementById('quake-status').textContent = loc.quakeShaking(state.quakeMag);
+        } else if (state.quakeJustHeld) {
+          document.getElementById('quake-status').textContent = loc.quakeHeld;
+        } else {
+          document.getElementById('quake-status').textContent = loc.quakeStable;
+        }
+
+        document.getElementById('cam-heading').textContent = loc.camHeading;
+        document.querySelectorAll('.cam-preset-btn').forEach((btn) => {
+          const key = btn.dataset.cam;
+          if (loc.camPresets[key]) btn.textContent = loc.camPresets[key];
+        });
+
+        // Intro modal
+        document.getElementById('intro-title').textContent = loc.introTitle;
+        document.getElementById('intro-subtitle').textContent = loc.introSubtitle;
+        document.getElementById('intro-desc').innerHTML = loc.introDescHtml;
+        document.getElementById('intro-card1-title').textContent = loc.introCards[0][0];
+        document.getElementById('intro-card1-sub').textContent = loc.introCards[0][1];
+        document.getElementById('intro-card2-title').textContent = loc.introCards[1][0];
+        document.getElementById('intro-card2-sub').textContent = loc.introCards[1][1];
+        document.getElementById('intro-card3-title').textContent = loc.introCards[2][0];
+        document.getElementById('intro-card3-sub').textContent = loc.introCards[2][1];
+        document.getElementById('btn-start-game').textContent = loc.startGameBtn;
+
+        // Help modal
+        document.getElementById('help-title').textContent = loc.helpTitle;
+        document.getElementById('btn-close-help').textContent = loc.closeBtn;
+        const helpList = document.getElementById('help-list');
+        helpList.innerHTML = loc.helpItemsHtml.map((item) => `<li>${item}</li>`).join('');
+      }
+
+      // =========================================================================
+      // 15. UI SYNCHRONIZATION & TOASTS
+      // =========================================================================
+      let toastTimeout = null;
+      function showToast(msg) {
+        const el = document.getElementById('toast');
+        const inner = document.getElementById('toast-inner');
+        inner.textContent = msg;
+        el.classList.remove('hidden');
+        el.classList.remove('toast-enter');
+        void el.offsetWidth;
+        el.classList.add('toast-enter');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => el.classList.add('hidden'), 3200);
+      }
+
+      function updateUI() {
+        const loc = t();
+        const p = loc.phases[state.phase];
+        const meta = PHASE_META[state.phase];
+
+        const bar = document.getElementById('phase-bar');
+        bar.innerHTML = '';
+        loc.phases.forEach((ph, idx) => {
+          const pill = document.createElement('div');
+          pill.className = 'phase-pill px-2.5 py-1 rounded-lg text-[11px] whitespace-nowrap border border-slate-700/80 text-slate-400';
+          if (idx < state.phase) pill.classList.add('done');
+          else if (idx === state.phase) pill.classList.add('active');
+          pill.textContent = ph.shortName;
+          bar.appendChild(pill);
+        });
+
+        document.getElementById('phase-badge').textContent = state.phase < 7 ? loc.phaseOf(state.phase + 1) : loc.completedBadge;
+        document.getElementById('phase-title').textContent = p.title;
+        document.getElementById('phase-desc').textContent = p.desc;
+        document.getElementById('phase-fact').textContent = p.fact;
+        document.getElementById('height-display').textContent = `${state.towerHeightMeters} m`;
+
+        const isDone = state.phase >= 7;
+        document.getElementById('phase-progress-wrap').classList.toggle('hidden', isDone);
+        document.getElementById('stress-controls').classList.toggle('hidden', !isDone);
+        document.getElementById('stress-controls').classList.toggle('flex', isDone);
+        document.getElementById('btn-action').classList.toggle('hidden', isDone);
+        document.getElementById('btn-restart').classList.toggle('hidden', !isDone);
+        document.getElementById('click-hint').classList.toggle('hidden', isDone);
+
+        if (!isDone) {
+          const pct = Math.round((state.step / meta.steps) * 100);
+          document.getElementById('phase-progress-bar').style.width = `${pct}%`;
+          document.getElementById('phase-task-count').textContent = `${state.step} / ${meta.steps}`;
+          const stepLabel = (p.stepLabels && p.stepLabels[state.step])
+            ? p.stepLabels[state.step]
+            : `${p.actionVerb} (${state.step + 1}/${meta.steps})`;
+          document.getElementById('btn-action-text').textContent = stepLabel;
+        }
+      }
+
+      function restartGame() {
+        state.phase = 0;
+        state.step = 0;
+        state.score = 0;
+        state.windSpeed = 0;
+        state.quakeIntensity = 0;
+        state.quakeTimer = 0;
+        state.quakeJustHeld = false;
+        state.towerHeightMeters = 0;
+        state.activeInspectKey = null;
+        state.xray = false;
+        applyXRay();
+
+        document.getElementById('score-display').textContent = '0';
+        document.getElementById('wind-slider').value = '0';
+        document.getElementById('wind-val').textContent = '0 km/h';
+        document.getElementById('sway-readout').textContent = '0.0 cm';
+        document.getElementById('quake-status').textContent = t().quakeStable;
+        document.getElementById('quake-status').className = 'text-[11px] font-semibold text-emerald-400';
+        document.getElementById('inspector-card').classList.add('hidden');
+
+        [shoringGroup, pilesGroup, rebarGroup, matSlabGroup, coreGroup, steelGroup, floorsGroup, mepGroup, glassGroup, crownGroup].forEach((g) => g.clear());
+        buildingRoot.rotation.set(0, 0, 0);
+        buildingRoot.position.set(0, 0, 0);
+        tmd.built = false;
+        crane.built = false;
+        crane.group.visible = false;
+        excavator.visible = true;
+
+        resetExcavationSoil();
+        refresh3DTargets();
+        camCtrl.setPreset('pit');
+        updateUI();
+        showToast(t().toasts.restarted);
+      }
+
+      // =========================================================================
+      // 16. EVENT LISTENERS FOR ALL CONTROLS
+      // =========================================================================
+      document.getElementById('btn-lang').addEventListener('click', toggleLanguage);
+      document.getElementById('btn-intro-lang').addEventListener('click', toggleLanguage);
+
+      document.getElementById('btn-start-game').addEventListener('click', () => {
+        Sound.init();
+        document.getElementById('intro-modal').classList.add('hidden');
+        camCtrl.setPreset('pit');
+      });
+
+      document.getElementById('btn-action').addEventListener('click', () => performBuildStep());
+      document.getElementById('btn-restart').addEventListener('click', restartGame);
+
+      document.getElementById('btn-xray').addEventListener('click', () => {
+        state.xray = !state.xray;
+        applyXRay();
+      });
+
+      document.getElementById('btn-lighting').addEventListener('click', () => {
+        state.lightingMode = (state.lightingMode + 1) % 3;
+        applyLighting();
+      });
+
+      document.getElementById('btn-mute').addEventListener('click', (e) => {
+        Sound.muted = !Sound.muted;
+        e.currentTarget.textContent = Sound.muted ? t().sfxOff : t().sfxOn;
+      });
+
+      document.getElementById('btn-reset-cam').addEventListener('click', () => {
+        camCtrl.setPreset(PHASE_META[state.phase].camera || 'overview');
+      });
+
+      document.getElementById('btn-help').addEventListener('click', () => {
+        const m = document.getElementById('help-modal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+      });
+      document.getElementById('btn-close-help').addEventListener('click', () => {
+        const m = document.getElementById('help-modal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+      });
+
+      document.getElementById('btn-close-inspector').addEventListener('click', () => {
+        state.activeInspectKey = null;
+        document.getElementById('inspector-card').classList.add('hidden');
+      });
+
+      document.getElementById('btn-toggle-panel').addEventListener('click', (e) => {
+        state.panelCollapsed = !state.panelCollapsed;
+        document.getElementById('phase-panel-body').classList.toggle('hidden', state.panelCollapsed);
+        e.currentTarget.textContent = state.panelCollapsed ? t().showPanel : t().hidePanel;
+      });
+
+      document.querySelectorAll('.cam-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => camCtrl.setPreset(btn.dataset.cam));
+      });
+
+      document.getElementById('wind-slider').addEventListener('input', (e) => {
+        state.windSpeed = Number(e.target.value);
+        document.getElementById('wind-val').textContent = `${state.windSpeed} km/h`;
+      });
+
+      document.getElementById('btn-tmd-toggle').addEventListener('click', (e) => {
+        state.tmdEnabled = !state.tmdEnabled;
+        e.currentTarget.classList.toggle('active', state.tmdEnabled);
+        e.currentTarget.textContent = state.tmdEnabled ? t().tmdOn : t().tmdOff;
+      });
+
+      function triggerQuake(mag, intensity) {
+        state.quakeIntensity = intensity;
+        state.quakeTimer = 4.2;
+        state.quakeMag = mag;
+        state.quakeJustHeld = false;
+        Sound.play('quake');
+        const status = document.getElementById('quake-status');
+        status.textContent = t().quakeShaking(mag);
+        status.className = 'text-[11px] font-bold text-rose-400';
+      }
+
+      document.getElementById('btn-quake-mild').addEventListener('click', () => triggerQuake(5.5, 0.35));
+      document.getElementById('btn-quake-strong').addEventListener('click', () => triggerQuake(7.2, 0.78));
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !state.quizOpen && document.getElementById('intro-modal').classList.contains('hidden')) {
+          e.preventDefault();
+          performBuildStep();
+        } else if (e.key === 'x' || e.key === 'X') {
+          state.xray = !state.xray;
+          applyXRay();
+        }
+      });
+
+      function onResize() {
+        const w = container.clientWidth || window.innerWidth;
+        const h = container.clientHeight || window.innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+      window.addEventListener('resize', onResize);
+
+      // =========================================================================
+      // 17. ANIMATION LOOP (Physics, Crane, Excavator, Particles, Wind/Quake)
+      // =========================================================================
+      let lastTime = performance.now();
+      let animReqId = null;
+
+      function animate(now) {
+        animReqId = requestAnimationFrame(animate);
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        const sec = now * 0.001;
+
+        targetsGroup.children.forEach((child) => {
+          if (child.material) {
+            child.material.opacity = 0.25 + Math.sin(sec * 4.2) * 0.16;
+          }
+        });
+
+        for (let i = activeAnimations.length - 1; i >= 0; i--) {
+          const a = activeAnimations[i];
+          a.elapsed += dt;
+          const u = Math.min(1, a.elapsed / a.duration);
+          const ease = 1 - Math.pow(1 - u, 3);
+          a.mesh.position.y = a.fromY + (a.toY - a.fromY) * ease;
+          if (u >= 1) activeAnimations.splice(i, 1);
+        }
+
+        for (let i = activeParticles.length - 1; i >= 0; i--) {
+          const p = activeParticles[i];
+          p.life -= dt;
+          p.vy -= 14 * dt;
+          p.mesh.position.x += p.vx * dt;
+          p.mesh.position.y += p.vy * dt;
+          p.mesh.position.z += p.vz * dt;
+          p.mesh.rotation.x += 4 * dt;
+          p.mesh.material.opacity = Math.max(0, p.life / p.maxLife);
+          if (p.life <= 0) {
+            particlesGroup.remove(p.mesh);
+            activeParticles.splice(i, 1);
+          }
+        }
+
+        if (excavator.visible && excavator.userData.arm) {
+          excavator.userData.arm.rotation.x = Math.sin(sec * 2.2) * 0.18;
+        }
+
+        if (crane.built && crane.group.visible) {
+          crane.currentAngle += (crane.targetAngle - crane.currentAngle) * 0.06;
+          crane.currentTrolley += (crane.targetTrolley - crane.currentTrolley) * 0.06;
+          crane.currentCableLen += (crane.targetCableLen - crane.currentCableLen) * 0.06;
+          crane.jibPivot.rotation.y = crane.currentAngle + Math.sin(sec * 0.35) * 0.04;
+          crane.trolley.position.z = crane.currentTrolley;
+          crane.cable.scale.y = crane.currentCableLen;
+          crane.cable.position.y = -crane.currentCableLen / 2;
+          crane.hook.position.y = -crane.currentCableLen;
+        }
+
+        let shakeX = 0, shakeZ = 0;
+        let windSway = 0;
+
+        if (state.windSpeed > 0) {
+          const windNorm = state.windSpeed / 160;
+          const dampFactor = (state.tmdEnabled && tmd.built) ? 0.55 : 1.0;
+          windSway = (windNorm * windNorm * 0.045 + Math.sin(sec * 2.6) * windNorm * 0.032) * dampFactor;
+
+          windStreaks.forEach((ws) => {
+            ws.mesh.material.opacity = windNorm * 0.55;
+            ws.mesh.position.x += ws.speed * windNorm * dt;
+            if (ws.mesh.position.x > 26) ws.mesh.position.x = -26;
+          });
+        } else {
+          windStreaks.forEach((ws) => { ws.mesh.material.opacity = 0; });
+        }
+
+        if (state.quakeTimer > 0) {
+          state.quakeTimer = Math.max(0, state.quakeTimer - dt);
+          const env = Math.min(1, state.quakeTimer / 1.2) * state.quakeIntensity;
+          shakeX = Math.sin(sec * 28) * env * 0.55;
+          shakeZ = Math.cos(sec * 23) * env * 0.45;
+          buildingRoot.position.x = shakeX * 0.5;
+          buildingRoot.position.z = shakeZ * 0.5;
+          buildingRoot.rotation.z = -windSway + Math.sin(sec * 7.5) * env * 0.065;
+          buildingRoot.rotation.x = Math.cos(sec * 6.8) * env * 0.045;
+
+          if (state.quakeTimer === 0) {
+            buildingRoot.position.set(0, 0, 0);
+            state.quakeJustHeld = true;
+            const status = document.getElementById('quake-status');
+            status.textContent = t().quakeHeld;
+            status.className = 'text-[11px] font-semibold text-emerald-400';
+          }
+        } else {
+          buildingRoot.position.set(0, 0, 0);
+          buildingRoot.rotation.z += (-windSway - buildingRoot.rotation.z) * 0.1;
+          buildingRoot.rotation.x += (0 - buildingRoot.rotation.x) * 0.1;
+        }
+
+        if (tmd.built) {
+          const targetTmdAngle = state.tmdEnabled
+            ? -buildingRoot.rotation.z * 7.5
+            : buildingRoot.rotation.z * 0.6;
+          tmd.pivot.rotation.z += (targetTmdAngle - tmd.pivot.rotation.z) * 0.14;
+        }
+
+        if (state.phase >= 7) {
+          const swayCm = Math.abs(Math.sin(buildingRoot.rotation.z) * 4800);
+          document.getElementById('sway-readout').textContent = `${swayCm.toFixed(1)} cm`;
+        }
+
+        crownGroup.traverse((c) => {
+          if (c.userData && c.userData.isBeacon) {
+            c.material.emissiveIntensity = (Math.sin(sec * 3.5) > 0) ? 2.2 : 0.25;
+          }
+        });
+
+        camCtrl.update(shakeX * 0.4, shakeZ * 0.4);
+        renderer.render(scene, camera);
+      }
+
+      // =========================================================================
+      // 18. INITIALIZATION ON LOAD
+      // =========================================================================
+      window.addEventListener('load', () => {
+        resetExcavationSoil();
+        refresh3DTargets();
+        applyLanguageStrings();
+        updateUI();
+        camCtrl.setPreset('overview');
+        onResize();
+        if (animReqId) cancelAnimationFrame(animReqId);
+        animate(performance.now());
+      });
+    })();
+  </script>
+</body>
+</html>
